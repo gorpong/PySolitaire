@@ -1,0 +1,2 @@
+blessed>=1.20.0
+pytest>=8.0.0
