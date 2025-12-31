@@ -31,6 +31,7 @@ from src.renderer import (
     BOARD_HEIGHT,
     get_card_color,
 )
+from src.undo import UndoStack, save_state, restore_state
 
 
 @dataclass
@@ -54,6 +55,9 @@ class SolitaireUI:
         self.move_count = 0
         self.running = True
         self.show_help = False
+        self.undo_stack = UndoStack()
+        self.stock_pass_count = 0  # Track passes through stock for loss detection
+        self.last_stock_size = len(self.state.stock)
 
     def run(self) -> None:
         """Main game loop."""
@@ -196,7 +200,7 @@ class SolitaireUI:
         elif key.lower() == 'r':
             self._handle_restart()
         elif key.lower() == 'u':
-            self.message = "Undo not yet implemented"
+            self._handle_undo()
 
     def _handle_enter(self) -> None:
         """Handle Enter key - select or place."""
@@ -314,9 +318,29 @@ class SolitaireUI:
             self._move_to_tableau(self.cursor.pile_index)
             return
 
+    def _save_for_undo(self) -> None:
+        """Save current state for undo."""
+        self.undo_stack.push(save_state(self.state))
+
+    def _handle_undo(self) -> None:
+        """Handle undo request."""
+        if not self.undo_stack.can_undo():
+            self.message = "Nothing to undo!"
+            return
+
+        saved = self.undo_stack.pop()
+        if saved:
+            restore_state(self.state, saved)
+            self.move_count = max(0, self.move_count - 1)
+            self.selection = None
+            self.message = "Undone!"
+
     def _move_to_foundation(self, dest_foundation: int) -> None:
         """Move selected card to foundation."""
         result: MoveResult
+
+        # Save state before move
+        self._save_for_undo()
 
         if self.selection.zone == CursorZone.WASTE:
             result = move_waste_to_foundation(self.state, dest_foundation)
@@ -335,15 +359,21 @@ class SolitaireUI:
 
         if result.success:
             self.move_count += 1
+            self.stock_pass_count = 0  # Reset pass count on successful move
             self.message = f"Moved to foundation!"
             self.selection = None
             self._check_win()
         else:
+            # Remove the undo state we just saved since move failed
+            self.undo_stack.pop()
             self.message = f"Invalid move: {result.message}"
 
     def _move_to_tableau(self, dest_pile: int) -> None:
         """Move selected card(s) to tableau."""
         result: MoveResult
+
+        # Save state before move
+        self._save_for_undo()
 
         if self.selection.zone == CursorZone.WASTE:
             result = move_waste_to_tableau(self.state, dest_pile)
@@ -361,25 +391,41 @@ class SolitaireUI:
 
         if result.success:
             self.move_count += 1
+            self.stock_pass_count = 0  # Reset pass count on successful move
             self.message = "Moved!"
             self.selection = None
         else:
+            # Remove the undo state we just saved since move failed
+            self.undo_stack.pop()
             self.message = f"Invalid move: {result.message}"
 
     def _handle_space(self) -> None:
         """Handle space bar - draw from stock."""
         if self.state.stock:
+            self._save_for_undo()
             result = draw_from_stock(self.state, self.draw_count)
             if result.success:
                 self.move_count += 1
                 drawn = min(self.draw_count, len(self.state.waste))
                 self.message = f"Drew {drawn} card(s) from stock."
         elif self.state.waste:
+            self._save_for_undo()
             result = recycle_waste_to_stock(self.state)
             if result.success:
+                self.stock_pass_count += 1
                 self.message = "Recycled waste to stock."
+                # Check for loss condition in Draw-1 mode
+                if self.draw_count == 1 and self.stock_pass_count >= 2:
+                    self._check_loss()
         else:
             self.message = "Both stock and waste are empty!"
+
+    def _check_loss(self) -> None:
+        """Check if player has lost (Draw-1 mode: no moves after full pass)."""
+        # In Draw-1 mode, if we've gone through the entire stock twice
+        # without making a move, the game is likely unwinnable
+        # This is a simplified check - a full check would verify no legal moves exist
+        self.message = "No progress made. Game may be unwinnable. Press R to restart or keep trying."
 
     def _cancel_selection(self) -> None:
         """Cancel current selection."""
@@ -409,6 +455,8 @@ class SolitaireUI:
             self.cursor = Cursor()
             self.selection = None
             self.move_count = 0
+            self.undo_stack.clear()
+            self.stock_pass_count = 0
             self.message = "New game started!"
         else:
             self.message = "Restart cancelled."
