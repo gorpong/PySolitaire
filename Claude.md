@@ -251,8 +251,9 @@ PySolitaire/
 │   ├── ui_blessed.py    # Blessed terminal UI and game loop
 │   ├── undo.py          # UndoStack and state helpers
 │   ├── leaderboard.py   # Leaderboard tracking and persistence
-│   └── save_state.py    # Save/load game state
-├── tests/               # 180+ passing tests (TDD)
+│   ├── save_state.py    # Save/load game state
+│   └── overlays.py      # UI overlay rendering (help, dialogs)
+├── tests/               # 197+ passing tests (TDD)
 ├── requirements.txt     # blessed>=1.20.0, pytest>=8.0.0
 ├── pyproject.toml       # Package configuration
 └── Claude.md            # This file
