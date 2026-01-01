@@ -186,3 +186,82 @@ After each completed milestone:
 Ask clarifying questions only if a decision has a significant impact on the build (otherwise choose a reasonable default and note it).
 
 The goal is a **polished, playable terminal Solitaire** with **cursor + enter pick/drop** controls.
+
+---
+
+## Implementation Decisions Made
+
+This section documents the decisions made during development.
+
+### Terminal UI Library: **blessed**
+
+After researching options (curses, blessed, prompt_toolkit, rich, Textual, asciimatics), **blessed** was chosen for:
+- Excellent mouse support via SGR 1006 protocol (tmux compatible)
+- Simple, Pythonic API with unified `inkey()` for keyboard and mouse
+- 24-bit color support for cursor visibility
+- Active maintenance (November 2025 release)
+- Grid-based rendering without heavy widget framework
+
+### Display Layout
+
+- **Board size**: 100×40 characters
+- **Card size**: 5 wide × 3 tall
+- **Tableau spacing**: 10 characters between piles for clear differentiation
+- **Foundation placement**: Right side (user preference)
+- **Cursor style**: Bright cyan brackets `[ ]` on blue background
+
+### Default Configuration
+
+- **Draw mode**: Draw-1 (default) for easier gameplay and loss detection
+- **Draw-3**: Available via `--draw3` command line flag
+- **Seed**: Optional `--seed <number>` for reproducible games
+
+### TAB Key Behavior
+
+- When a card is selected, pressing **TAB** shows all valid placement destinations
+- When hovering over a card (not selected), pressing **TAB** shows where that card could go
+- Valid destinations are highlighted with inverted colors
+- Any other input clears the highlighting
+
+### Loss Detection (Draw-1 mode)
+
+After 2 full passes through the stock without any successful moves, a warning is displayed suggesting the game may be unwinnable. Player can continue or restart.
+
+### Undo System
+
+- Command pattern with state snapshots
+- Maximum 100 states stored
+- Triggered by **U** key
+- State saved before each move, popped on failed moves
+
+### File Structure
+
+```
+PySolitaire/
+├── src/
+│   ├── __init__.py
+│   ├── __main__.py      # Entry point
+│   ├── config.py        # GameConfig dataclass
+│   ├── model.py         # Card, Suit, Rank, GameState
+│   ├── dealing.py       # Shuffle/deal with seedable RNG
+│   ├── rules.py         # Move validation (pure functions)
+│   ├── moves.py         # Move execution with auto-flip
+│   ├── cursor.py        # Zone-based navigation model
+│   ├── renderer.py      # ASCII rendering functions
+│   ├── ui_blessed.py    # Blessed terminal UI and game loop
+│   └── undo.py          # UndoStack and state helpers
+├── tests/               # 152+ passing tests (TDD)
+├── requirements.txt     # blessed>=1.20.0, pytest>=8.0.0
+├── pyproject.toml       # Package configuration
+└── Claude.md            # This file
+```
+
+### Entry Points
+
+The game can be run via:
+- `pysolitaire` or `solitaire` (after pip install)
+- `python -m src` (development)
+
+### Minimum Terminal Size
+
+The game requires a terminal of at least **100×40** characters. If the terminal is smaller, the game exits with an error message explaining the requirement.
