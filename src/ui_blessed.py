@@ -33,6 +33,14 @@ from src.renderer import (
 from src.undo import UndoStack, save_state, restore_state
 from src.leaderboard import Leaderboard
 from src.save_state import SaveStateManager
+from src.overlays import (
+    format_time,
+    render_help_lines,
+    render_resume_prompt_lines,
+    render_leaderboard_overlay_lines,
+    render_win_leaderboard_lines,
+    render_initials_prompt,
+)
 
 
 # Minimum terminal size requirements
@@ -116,10 +124,7 @@ class SolitaireUI:
 
     def _format_time(self, seconds: float) -> str:
         """Format elapsed time as MM:SS."""
-        total_seconds = int(seconds)
-        minutes = total_seconds // 60
-        secs = total_seconds % 60
-        return f"{minutes:02d}:{secs:02d}"
+        return format_time(seconds)
 
     def _load_saved_game(self, saved_data: Dict[str, Any]) -> None:
         """Load saved game data into current game state."""
@@ -146,22 +151,7 @@ class SolitaireUI:
         start_x = max(0, (term_width - 60) // 2)
         start_y = 10
 
-        time_str = self._format_time(elapsed_time)
-        info_line = f"            Moves: {move_count}    Time: {time_str}"
-        # Pad to fit in the box (58 chars inner width)
-        info_line = f"║{info_line:<58}║"
-
-        prompt_lines = [
-            "╔══════════════════════════════════════════════════════════╗",
-            "║                                                          ║",
-            "║            A saved game was found!                       ║",
-            info_line,
-            "║                                                          ║",
-            "║            Press R to RESUME                             ║",
-            "║            Press N to start NEW game                     ║",
-            "║                                                          ║",
-            "╚══════════════════════════════════════════════════════════╝",
-        ]
+        prompt_lines = render_resume_prompt_lines(move_count, elapsed_time)
 
         for i, line in enumerate(prompt_lines):
             frame += self.term.move_xy(start_x, start_y + i) + self.term.bright_white(line)
@@ -294,26 +284,7 @@ class SolitaireUI:
 
     def _render_help_str(self, pad_left: int) -> str:
         """Build help overlay string."""
-        help_lines = [
-            "╔══════════════════════════════════════╗",
-            "║           SOLITAIRE HELP             ║",
-            "╠══════════════════════════════════════╣",
-            "║  Arrow Keys : Navigate the board     ║",
-            "║  Enter      : Select / Place card    ║",
-            "║  Tab        : Show valid placements  ║",
-            "║  Space      : Draw from stock        ║",
-            "║  Escape     : Cancel selection       ║",
-            "║  U          : Undo last move         ║",
-            "║  L          : View leaderboard       ║",
-            "║  R          : Restart game           ║",
-            "║  H / ?      : Toggle this help       ║",
-            "║  Q          : Quit (auto-saves)      ║",
-            "╠══════════════════════════════════════╣",
-            "║  Goal: Move all cards to foundations ║",
-            "║  Build foundations A→K by suit       ║",
-            "║  Build tableau K→A alternating color ║",
-            "╚══════════════════════════════════════╝",
-        ]
+        help_lines = render_help_lines()
         start_y = 8
         start_x = pad_left + (BOARD_WIDTH - 40) // 2
         result = ""
@@ -705,7 +676,6 @@ class SolitaireUI:
         Returns the initials (3 chars, uppercase), or "N/A" if cancelled.
         """
         initials = ""
-        prompt_msg = "Enter your initials (3 letters, ESC to skip): "
 
         while len(initials) < 3:
             # Render current state
@@ -738,7 +708,7 @@ class SolitaireUI:
 
             # Draw initials prompt
             status_y = BOARD_HEIGHT
-            prompt_display = prompt_msg + initials + "_"
+            prompt_display = render_initials_prompt(initials)
             frame += self.term.move_xy(pad_left + 2, status_y - 2) + self.term.bright_cyan(prompt_display)
 
             print(frame, end='', flush=True)
