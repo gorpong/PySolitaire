@@ -132,8 +132,12 @@ class SolitaireUI:
         self.paused = False
         self.pause_start = 0.0
 
-    def _prompt_resume_game(self) -> bool:
+    def _prompt_resume_game(self, move_count: int, elapsed_time: float) -> bool:
         """Prompt user to resume saved game or start new.
+
+        Args:
+            move_count: Number of moves in the saved game.
+            elapsed_time: Elapsed time in seconds in the saved game.
 
         Returns True to resume, False to start new.
         """
@@ -142,10 +146,16 @@ class SolitaireUI:
         start_x = max(0, (term_width - 60) // 2)
         start_y = 10
 
+        time_str = self._format_time(elapsed_time)
+        info_line = f"            Moves: {move_count}    Time: {time_str}"
+        # Pad to fit in the box (58 chars inner width)
+        info_line = f"║{info_line:<58}║"
+
         prompt_lines = [
             "╔══════════════════════════════════════════════════════════╗",
             "║                                                          ║",
             "║            A saved game was found!                       ║",
+            info_line,
             "║                                                          ║",
             "║            Press R to RESUME                             ║",
             "║            Press N to start NEW game                     ║",
@@ -173,18 +183,18 @@ class SolitaireUI:
         with self.term.fullscreen(), self.term.cbreak(), self.term.hidden_cursor():
             # Check for saved game
             if self.save_manager.has_save():
-                if self._prompt_resume_game():
-                    saved_data = self.save_manager.load_game()
-                    if saved_data:
+                saved_data = self.save_manager.load_game()
+                if saved_data:
+                    if self._prompt_resume_game(saved_data['move_count'], saved_data['elapsed_time']):
                         self._load_saved_game(saved_data)
                         self.message = "Game resumed!"
                         # Delete save file after loading
                         self.save_manager.delete_save()
-                else:
-                    # Start new game, delete save
-                    self.save_manager.delete_save()
-                    self.message = "New game started!"
-                self.needs_redraw = True
+                    else:
+                        # Start new game, delete save
+                        self.save_manager.delete_save()
+                        self.message = "New game started!"
+                    self.needs_redraw = True
 
             while self.running:
                 if self.needs_redraw:
