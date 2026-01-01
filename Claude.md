@@ -249,8 +249,10 @@ PySolitaire/
 │   ├── cursor.py        # Zone-based navigation model
 │   ├── renderer.py      # ASCII rendering functions
 │   ├── ui_blessed.py    # Blessed terminal UI and game loop
-│   └── undo.py          # UndoStack and state helpers
-├── tests/               # 152+ passing tests (TDD)
+│   ├── undo.py          # UndoStack and state helpers
+│   ├── leaderboard.py   # Leaderboard tracking and persistence
+│   └── save_state.py    # Save/load game state
+├── tests/               # 180+ passing tests (TDD)
 ├── requirements.txt     # blessed>=1.20.0, pytest>=8.0.0
 ├── pyproject.toml       # Package configuration
 └── Claude.md            # This file
@@ -265,3 +267,45 @@ The game can be run via:
 ### Minimum Terminal Size
 
 The game requires a terminal of at least **100×40** characters. If the terminal is smaller, the game exits with an error message explaining the requirement.
+
+---
+
+## Phase 1 Features (Completed)
+
+### Timer and Move Counter
+
+- **Timer**: Displays elapsed time in MM:SS format in the HUD
+- **Move Counter**: Shows total moves made
+- **Pause/Resume**: Timer automatically pauses during help overlay, confirmation dialogs, and leaderboard viewing
+- **Reset on Restart**: Timer resets when starting a new game
+
+### Leaderboard
+
+- **Separate Leaderboards**: Draw-1 and Draw-3 games have separate leaderboards
+- **Storage**: Leaderboard saved to `~/.config/pysolitaire/leaderboard.json`
+- **Top 20 Entries**: Keeps the best 20 scores per draw mode
+- **Sorting**: Entries sorted by moves (primary), then time (secondary)
+- **Viewing**: Press **L** during game to view leaderboard (pauses timer)
+- **Post-Win Display**: After winning, player is prompted for initials and shown the leaderboard
+
+### Initials Prompt
+
+- **3-Letter Arcade Style**: Player enters 3 letters for their name
+- **Uppercase**: Automatically converted to uppercase
+- **Cancel Option**: Press ESC to skip, which records as "N/A"
+- **Backspace Support**: Can correct typing mistakes
+
+### Save State
+
+- **Automatic Save on Quit**: Game state is saved when quitting (Q key)
+- **Resume on Startup**: If a save exists, player is prompted to resume or start new
+- **Single Save Slot**: Only one auto-save at a time
+- **Includes Timer**: Saved game preserves elapsed time
+- **Storage**: Save file at `~/.config/pysolitaire/save.json`
+- **Deleted on Win**: Save file is removed when game is won
+
+### Updated Controls
+
+- **L**: View leaderboard (pauses timer)
+- **Q**: Quit game (now auto-saves before quitting)
+- All other controls remain the same
