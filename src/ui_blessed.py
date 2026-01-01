@@ -1,6 +1,7 @@
 """Blessed terminal UI for Solitaire."""
 
-from typing import Optional, Tuple, List
+import sys
+from typing import Optional, List, Set, Tuple
 from dataclasses import dataclass
 from blessed import Terminal
 
@@ -22,16 +23,18 @@ from src.rules import (
     can_pick_from_waste,
     get_valid_tableau_destinations,
     get_valid_foundation_destinations,
-    FOUNDATION_SUIT_ORDER,
 )
 from src.renderer import (
     render_board,
-    canvas_to_string,
     BOARD_WIDTH,
     BOARD_HEIGHT,
-    get_card_color,
 )
 from src.undo import UndoStack, save_state, restore_state
+
+
+# Minimum terminal size requirements
+MIN_TERM_WIDTH = 100
+MIN_TERM_HEIGHT = 40
 
 
 @dataclass
@@ -40,6 +43,13 @@ class Selection:
     zone: CursorZone
     pile_index: int = 0
     card_index: int = 0  # For tableau: starting card of the run
+
+
+@dataclass
+class HighlightedDestinations:
+    """Valid destinations to highlight."""
+    tableau_piles: Set[int]  # Set of tableau pile indices (0-6)
+    foundation_piles: Set[int]  # Set of foundation pile indices (0-3)
 
 
 class SolitaireUI:
@@ -56,73 +66,94 @@ class SolitaireUI:
         self.running = True
         self.show_help = False
         self.undo_stack = UndoStack()
-        self.stock_pass_count = 0  # Track passes through stock for loss detection
-        self.last_stock_size = len(self.state.stock)
+        self.stock_pass_count = 0
+        self.needs_redraw = True  # Track if redraw is needed
+        self.highlighted: Optional[HighlightedDestinations] = None  # Valid destinations to show
+
+    def _check_terminal_size(self) -> bool:
+        """Check if terminal is large enough. Returns True if OK."""
+        width = self.term.width or 80
+        height = self.term.height or 24
+        if width < MIN_TERM_WIDTH or height < MIN_TERM_HEIGHT:
+            print(f"\nError: Terminal too small!")
+            print(f"  Current size: {width}x{height}")
+            print(f"  Required minimum: {MIN_TERM_WIDTH}x{MIN_TERM_HEIGHT}")
+            print(f"\nPlease resize your terminal and try again.")
+            return False
+        return True
 
     def run(self) -> None:
         """Main game loop."""
+        if not self._check_terminal_size():
+            sys.exit(1)
+
         with self.term.fullscreen(), self.term.cbreak(), self.term.hidden_cursor():
             while self.running:
-                self._render()
+                if self.needs_redraw:
+                    self._render()
+                    self.needs_redraw = False
                 self._handle_input()
 
     def _render(self) -> None:
         """Render the game board."""
-        # Clear screen
-        print(self.term.home + self.term.clear, end='')
+        # Build output buffer instead of printing directly
+        output_lines = []
 
         # Render the board
+        highlighted_tableau = self.highlighted.tableau_piles if self.highlighted else None
+        highlighted_foundations = self.highlighted.foundation_piles if self.highlighted else None
         canvas = render_board(
             self.state,
             cursor_zone=self.cursor.zone.value,
             cursor_index=self.cursor.pile_index,
             cursor_card_index=self.cursor.card_index,
+            highlighted_tableau=highlighted_tableau,
+            highlighted_foundations=highlighted_foundations,
         )
 
-        # Apply colors to canvas and convert to string
-        output = self._colorize_board(canvas)
+        # Apply colors to canvas
+        for row in canvas:
+            line = ''.join(row)
+            line = self._colorize_line(line)
+            output_lines.append(line)
 
         # Center the board
         term_width = self.term.width or BOARD_WIDTH
         pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
+        padding = ' ' * pad_left
 
-        lines = output.split('\n')
-        for y, line in enumerate(lines):
-            print(self.term.move_xy(pad_left, y) + line, end='')
+        # Build complete frame
+        frame = self.term.home + self.term.clear
 
-        # Draw status bar with message
-        status_y = BOARD_HEIGHT + 1
+        for y, line in enumerate(output_lines):
+            frame += self.term.move_xy(0, y) + padding + line
+
+        # Draw status bar
+        status_y = BOARD_HEIGHT
         move_text = f"Moves: {self.move_count}"
-        print(self.term.move_xy(pad_left + 2, status_y - 4) + self.term.bright_white(move_text), end='')
+        frame += self.term.move_xy(pad_left + 2, status_y - 4) + self.term.bright_white(move_text)
 
         # Message line
         msg_color = self.term.bright_yellow if "!" in self.message or "Invalid" in self.message else self.term.bright_cyan
-        print(self.term.move_xy(pad_left + 2, status_y - 2) + msg_color(self.message[:BOARD_WIDTH - 4]), end='')
+        # Clear the message line first
+        frame += self.term.move_xy(pad_left + 2, status_y - 2) + ' ' * (BOARD_WIDTH - 4)
+        frame += self.term.move_xy(pad_left + 2, status_y - 2) + msg_color(self.message[:BOARD_WIDTH - 4])
 
         # Selection indicator
+        frame += self.term.move_xy(pad_left + 2, status_y - 1) + ' ' * (BOARD_WIDTH - 4)
         if self.selection:
             sel_text = f"Selected: {self._describe_selection()}"
-            print(self.term.move_xy(pad_left + 2, status_y - 1) + self.term.bright_green(sel_text), end='')
+            frame += self.term.move_xy(pad_left + 2, status_y - 1) + self.term.bright_green(sel_text)
 
         # Help overlay
         if self.show_help:
-            self._render_help(pad_left)
+            frame += self._render_help_str(pad_left)
 
-        # Flush output
-        print('', end='', flush=True)
+        # Output entire frame at once
+        print(frame, end='', flush=True)
 
-    def _colorize_board(self, canvas: List[List[str]]) -> str:
-        """Apply colors to the rendered board."""
-        lines = []
-        for row in canvas:
-            line = ''.join(row)
-            # Colorize suit symbols
-            line = self._colorize_suits(line)
-            lines.append(line)
-        return '\n'.join(lines)
-
-    def _colorize_suits(self, line: str) -> str:
-        """Add color to suit symbols in a line."""
+    def _colorize_line(self, line: str) -> str:
+        """Add color to a line including suit symbols and cursor."""
         result = ""
         i = 0
         while i < len(line):
@@ -132,10 +163,12 @@ class SolitaireUI:
             elif char in "♣♠":
                 result += self.term.white(char)
             elif char == "[":
-                # Cursor bracket - make it very visible
                 result += self.term.bright_cyan_on_blue(char)
             elif char == "]":
                 result += self.term.bright_cyan_on_blue(char)
+            elif char == "*":
+                # Highlight marker for valid destinations
+                result += self.term.bright_yellow_on_green(char)
             elif char == "░":
                 result += self.term.blue(char)
             else:
@@ -143,14 +176,15 @@ class SolitaireUI:
             i += 1
         return result
 
-    def _render_help(self, pad_left: int) -> None:
-        """Render help overlay."""
+    def _render_help_str(self, pad_left: int) -> str:
+        """Build help overlay string."""
         help_lines = [
             "╔══════════════════════════════════════╗",
             "║           SOLITAIRE HELP             ║",
             "╠══════════════════════════════════════╣",
             "║  Arrow Keys : Navigate the board     ║",
             "║  Enter      : Select / Place card    ║",
+            "║  Tab        : Show valid placements  ║",
             "║  Space      : Draw from stock        ║",
             "║  Escape     : Cancel selection       ║",
             "║  U          : Undo last move         ║",
@@ -165,15 +199,22 @@ class SolitaireUI:
         ]
         start_y = 8
         start_x = pad_left + (BOARD_WIDTH - 40) // 2
+        result = ""
         for i, help_line in enumerate(help_lines):
-            print(self.term.move_xy(start_x, start_y + i) + self.term.black_on_bright_white(help_line), end='')
+            result += self.term.move_xy(start_x, start_y + i) + self.term.black_on_bright_white(help_line)
+        return result
 
     def _handle_input(self) -> None:
         """Handle keyboard input."""
-        key = self.term.inkey(timeout=0.1)
+        key = self.term.inkey(timeout=None)  # Block until input
 
         if not key:
             return
+
+        # Clear highlighting on any input
+        if self.highlighted:
+            self.highlighted = None
+            self.needs_redraw = True
 
         # Clear previous non-error message
         if "Invalid" not in self.message and "Cannot" not in self.message:
@@ -181,26 +222,38 @@ class SolitaireUI:
 
         if key.name == 'KEY_UP':
             self.cursor.move_up(self.state)
+            self.needs_redraw = True
         elif key.name == 'KEY_DOWN':
             self.cursor.move_down(self.state)
+            self.needs_redraw = True
         elif key.name == 'KEY_LEFT':
             self.cursor.move_left(self.state)
+            self.needs_redraw = True
         elif key.name == 'KEY_RIGHT':
             self.cursor.move_right(self.state)
+            self.needs_redraw = True
         elif key.name == 'KEY_ENTER' or key == '\n':
             self._handle_enter()
+            self.needs_redraw = True
+        elif key.name == 'KEY_TAB' or key == '\t':
+            self._handle_tab()
+            self.needs_redraw = True
         elif key == ' ':
             self._handle_space()
+            self.needs_redraw = True
         elif key.name == 'KEY_ESCAPE':
             self._cancel_selection()
+            self.needs_redraw = True
         elif key.lower() == 'q':
             self._handle_quit()
         elif key.lower() == 'h' or key == '?':
             self.show_help = not self.show_help
+            self.needs_redraw = True
         elif key.lower() == 'r':
             self._handle_restart()
         elif key.lower() == 'u':
             self._handle_undo()
+            self.needs_redraw = True
 
     def _handle_enter(self) -> None:
         """Handle Enter key - select or place."""
@@ -209,10 +262,62 @@ class SolitaireUI:
         else:
             self._try_place()
 
+    def _handle_tab(self) -> None:
+        """Handle Tab key - show valid placements."""
+        card = None
+
+        if self.selection:
+            # Show placements for selected card
+            card = self._get_selected_card()
+        else:
+            # Show placements for card under cursor
+            card = self._get_card_under_cursor()
+
+        if card is None:
+            self.message = "No card to show placements for!"
+            return
+
+        # Find valid destinations
+        tableau_dests = get_valid_tableau_destinations(card, self.state)
+        foundation_dests = get_valid_foundation_destinations(card, self.state)
+
+        # For runs (multiple cards), can't go to foundation
+        if self.selection and self.selection.zone == CursorZone.TABLEAU:
+            pile = self.state.tableau[self.selection.pile_index]
+            if len(pile) - self.selection.card_index > 1:
+                foundation_dests = []
+
+        if not tableau_dests and not foundation_dests:
+            self.message = "No valid placements for this card!"
+            return
+
+        self.highlighted = HighlightedDestinations(
+            tableau_piles=set(tableau_dests),
+            foundation_piles=set(foundation_dests),
+        )
+
+        dest_count = len(tableau_dests) + len(foundation_dests)
+        self.message = f"{dest_count} valid placement(s) highlighted."
+
+    def _get_card_under_cursor(self) -> Optional[Card]:
+        """Get the card currently under the cursor."""
+        if self.cursor.zone == CursorZone.STOCK:
+            return None  # Stock cards aren't visible
+        elif self.cursor.zone == CursorZone.WASTE:
+            return self.state.waste[-1] if self.state.waste else None
+        elif self.cursor.zone == CursorZone.FOUNDATION:
+            pile = self.state.foundations[self.cursor.pile_index]
+            return pile[-1] if pile else None
+        elif self.cursor.zone == CursorZone.TABLEAU:
+            pile = self.state.tableau[self.cursor.pile_index]
+            if pile and self.cursor.card_index < len(pile):
+                card = pile[self.cursor.card_index]
+                return card if card.face_up else None
+        return None
+
     def _try_select(self) -> None:
         """Try to select card(s) at cursor position."""
         if self.cursor.zone == CursorZone.STOCK:
-            # Stock: draw card(s) instead of selecting
             self._handle_space()
             return
 
@@ -223,8 +328,7 @@ class SolitaireUI:
                     pile_index=0,
                     card_index=0,
                 )
-                self.message = "Card selected. Move to destination and press Enter."
-                self._check_auto_move()
+                self.message = "Card selected. Press Tab to see placements, or move and Enter to place."
             else:
                 self.message = "Waste is empty!"
             return
@@ -237,7 +341,7 @@ class SolitaireUI:
                     pile_index=self.cursor.pile_index,
                     card_index=0,
                 )
-                self.message = "Foundation card selected."
+                self.message = "Foundation card selected. Press Tab to see placements."
             else:
                 self.message = "Foundation is empty!"
             return
@@ -256,40 +360,11 @@ class SolitaireUI:
                 )
                 num_cards = len(pile) - self.cursor.card_index
                 if num_cards > 1:
-                    self.message = f"{num_cards} cards selected."
+                    self.message = f"{num_cards} cards selected. Press Tab to see placements."
                 else:
-                    self.message = "Card selected."
-                self._check_auto_move()
+                    self.message = "Card selected. Press Tab to see placements."
             else:
                 self.message = "Cannot select face-down card!"
-
-    def _check_auto_move(self) -> None:
-        """Check if there's only one valid destination and auto-move."""
-        if self.selection is None:
-            return
-
-        card = self._get_selected_card()
-        if card is None:
-            return
-
-        # Find all valid destinations
-        tableau_dests = get_valid_tableau_destinations(card, self.state)
-        foundation_dests = get_valid_foundation_destinations(card, self.state)
-
-        # For runs (multiple cards), can't go to foundation
-        if self.selection.zone == CursorZone.TABLEAU:
-            pile = self.state.tableau[self.selection.pile_index]
-            if len(pile) - self.selection.card_index > 1:
-                foundation_dests = []
-
-        total_dests = len(tableau_dests) + len(foundation_dests)
-
-        if total_dests == 1:
-            # Auto-move to the single destination
-            if foundation_dests:
-                self._move_to_foundation(foundation_dests[0])
-            else:
-                self._move_to_tableau(tableau_dests[0])
 
     def _try_place(self) -> None:
         """Try to place selected card(s) at cursor position."""
@@ -339,19 +414,19 @@ class SolitaireUI:
         """Move selected card to foundation."""
         result: MoveResult
 
-        # Save state before move
         self._save_for_undo()
 
         if self.selection.zone == CursorZone.WASTE:
             result = move_waste_to_foundation(self.state, dest_foundation)
         elif self.selection.zone == CursorZone.TABLEAU:
-            # Can only move single card to foundation
             pile = self.state.tableau[self.selection.pile_index]
             if len(pile) - self.selection.card_index > 1:
+                self.undo_stack.pop()
                 self.message = "Can only move single card to foundation!"
                 return
             result = move_tableau_to_foundation(self.state, self.selection.pile_index, dest_foundation)
         elif self.selection.zone == CursorZone.FOUNDATION:
+            self.undo_stack.pop()
             self.message = "Cannot move foundation to foundation!"
             return
         else:
@@ -359,12 +434,11 @@ class SolitaireUI:
 
         if result.success:
             self.move_count += 1
-            self.stock_pass_count = 0  # Reset pass count on successful move
-            self.message = f"Moved to foundation!"
+            self.stock_pass_count = 0
+            self.message = "Moved to foundation!"
             self.selection = None
             self._check_win()
         else:
-            # Remove the undo state we just saved since move failed
             self.undo_stack.pop()
             self.message = f"Invalid move: {result.message}"
 
@@ -372,7 +446,6 @@ class SolitaireUI:
         """Move selected card(s) to tableau."""
         result: MoveResult
 
-        # Save state before move
         self._save_for_undo()
 
         if self.selection.zone == CursorZone.WASTE:
@@ -391,11 +464,10 @@ class SolitaireUI:
 
         if result.success:
             self.move_count += 1
-            self.stock_pass_count = 0  # Reset pass count on successful move
+            self.stock_pass_count = 0
             self.message = "Moved!"
             self.selection = None
         else:
-            # Remove the undo state we just saved since move failed
             self.undo_stack.pop()
             self.message = f"Invalid move: {result.message}"
 
@@ -414,7 +486,6 @@ class SolitaireUI:
             if result.success:
                 self.stock_pass_count += 1
                 self.message = "Recycled waste to stock."
-                # Check for loss condition in Draw-1 mode
                 if self.draw_count == 1 and self.stock_pass_count >= 2:
                     self._check_loss()
         else:
@@ -422,9 +493,6 @@ class SolitaireUI:
 
     def _check_loss(self) -> None:
         """Check if player has lost (Draw-1 mode: no moves after full pass)."""
-        # In Draw-1 mode, if we've gone through the entire stock twice
-        # without making a move, the game is likely unwinnable
-        # This is a simplified check - a full check would verify no legal moves exist
         self.message = "No progress made. Game may be unwinnable. Press R to restart or keep trying."
 
     def _cancel_selection(self) -> None:
@@ -438,16 +506,19 @@ class SolitaireUI:
     def _handle_quit(self) -> None:
         """Handle quit request."""
         self.message = "Press Q again to confirm quit, any other key to cancel."
+        self.needs_redraw = True
         self._render()
         key = self.term.inkey()
         if key.lower() == 'q':
             self.running = False
         else:
             self.message = "Quit cancelled."
+            self.needs_redraw = True
 
     def _handle_restart(self) -> None:
         """Handle restart request."""
         self.message = "Press R again to restart, any other key to cancel."
+        self.needs_redraw = True
         self._render()
         key = self.term.inkey()
         if key.lower() == 'r':
@@ -460,12 +531,14 @@ class SolitaireUI:
             self.message = "New game started!"
         else:
             self.message = "Restart cancelled."
+        self.needs_redraw = True
 
     def _check_win(self) -> None:
         """Check if the player has won."""
         total_in_foundations = sum(len(pile) for pile in self.state.foundations)
         if total_in_foundations == 52:
-            self.message = "🎉 CONGRATULATIONS! You won! 🎉 Press any key to exit."
+            self.message = "CONGRATULATIONS! You won! Press any key to exit."
+            self.needs_redraw = True
             self._render()
             self.term.inkey()
             self.running = False
@@ -506,12 +579,9 @@ class SolitaireUI:
 
 def main():
     """Entry point for the game."""
-    import sys
-
     seed = None
     draw_count = 1
 
-    # Simple argument parsing
     args = sys.argv[1:]
     for i, arg in enumerate(args):
         if arg == "--seed" and i + 1 < len(args):
@@ -521,6 +591,18 @@ def main():
                 pass
         elif arg == "--draw3":
             draw_count = 3
+        elif arg in ("--help", "-h"):
+            print("PySolitaire - Terminal Klondike Solitaire")
+            print()
+            print("Usage: pysolitaire [options]")
+            print()
+            print("Options:")
+            print("  --seed NUM   Use specific random seed for reproducible games")
+            print("  --draw3      Draw 3 cards from stock (default: draw 1)")
+            print("  --help, -h   Show this help message")
+            print()
+            print(f"Requires terminal size of at least {MIN_TERM_WIDTH}x{MIN_TERM_HEIGHT}")
+            sys.exit(0)
 
     ui = SolitaireUI(seed=seed, draw_count=draw_count)
     ui.run()

@@ -210,14 +210,35 @@ def draw_cursor(
                 canvas[y + dy][right_x] = "]"
 
 
+def draw_highlight(
+    canvas: List[List[str]],
+    x: int,
+    y: int,
+    height: int = CARD_HEIGHT
+) -> None:
+    """
+    Draw highlight markers around a card position using asterisks.
+
+    Used to show valid placement destinations.
+    """
+    left_x = x - 1
+    right_x = x + CARD_WIDTH
+
+    for dy in range(height):
+        if 0 <= y + dy < len(canvas):
+            if 0 <= left_x < len(canvas[0]):
+                canvas[y + dy][left_x] = "*"
+            if 0 <= right_x < len(canvas[0]):
+                canvas[y + dy][right_x] = "*"
+
+
 def render_board(
     state: GameState,
     cursor_zone: Optional[str] = None,
     cursor_index: int = 0,
     cursor_card_index: int = 0,
-    selected_zone: Optional[str] = None,
-    selected_index: int = 0,
-    selected_card_index: int = 0,
+    highlighted_tableau: Optional[set] = None,
+    highlighted_foundations: Optional[set] = None,
 ) -> List[List[str]]:
     """
     Render the complete game board.
@@ -227,13 +248,16 @@ def render_board(
         cursor_zone: Zone where cursor is ("stock", "waste", "foundation", "tableau")
         cursor_index: Index within zone (0-3 for foundations, 0-6 for tableau)
         cursor_card_index: Card index within tableau pile (for selection)
-        selected_zone: Zone of selected cards (if any)
-        selected_index: Index within selected zone
-        selected_card_index: Starting card index of selection
+        highlighted_tableau: Set of tableau pile indices to highlight as valid destinations
+        highlighted_foundations: Set of foundation pile indices to highlight as valid destinations
 
     Returns:
         2D canvas with the rendered board
     """
+    if highlighted_tableau is None:
+        highlighted_tableau = set()
+    if highlighted_foundations is None:
+        highlighted_foundations = set()
     canvas = create_canvas(BOARD_WIDTH, BOARD_HEIGHT)
     draw_border(canvas, BOARD_WIDTH, BOARD_HEIGHT)
 
@@ -282,6 +306,9 @@ def render_board(
         # Draw cursor on foundation if applicable
         if cursor_zone == "foundation" and cursor_index == i:
             draw_cursor(canvas, fx, fy)
+        # Draw highlight for valid destination
+        elif i in highlighted_foundations:
+            draw_highlight(canvas, fx, fy)
 
     draw_text(canvas, FOUNDATION_START_X + 7, FOUNDATION_Y + CARD_HEIGHT, "FOUNDATIONS")
 
@@ -297,6 +324,8 @@ def render_board(
             draw_card(canvas, tx, ty, None)
             if cursor_zone == "tableau" and cursor_index == pile_idx:
                 draw_cursor(canvas, tx, ty)
+            elif pile_idx in highlighted_tableau:
+                draw_highlight(canvas, tx, ty)
             continue
 
         # Draw cards with overlap
@@ -320,6 +349,10 @@ def render_board(
             else:
                 cursor_height = (remaining_cards - 1) * CARD_OVERLAP_Y + CARD_HEIGHT
             draw_cursor(canvas, tx, cursor_y, cursor_height)
+        # Draw highlight for valid destination (on the bottom card)
+        elif pile_idx in highlighted_tableau:
+            bottom_card_y = get_tableau_card_y(pile, len(pile) - 1)
+            draw_highlight(canvas, tx, bottom_card_y)
 
     # Status area
     status_y = BOARD_HEIGHT - 4
