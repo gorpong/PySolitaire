@@ -79,28 +79,23 @@ class Leaderboard:
             draw_mode=draw_mode,
         )
 
-        # Choose the right list
         entries = self.entries_draw1 if draw_mode == 1 else self.entries_draw3
 
-        # Add entry
         entries.append(entry)
 
-        # Sort by moves (primary), then time (secondary)
+        # Lower move count wins; time is the tiebreaker so faster completions rank higher
         entries.sort(key=lambda e: (e.moves, e.time_seconds))
 
-        # Keep only top MAX_ENTRIES
+        # Slice in-place so a single bad entry doesn't permanently bloat the file
         entries[:] = entries[:self.MAX_ENTRIES]
 
-        # Update the correct list
         if draw_mode == 1:
             self.entries_draw1 = entries
         else:
             self.entries_draw3 = entries
 
-        # Save to disk
         self._save()
 
-        # Find position (1-indexed)
         try:
             position = entries.index(entry) + 1
             return position

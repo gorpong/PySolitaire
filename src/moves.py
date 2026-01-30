@@ -42,23 +42,18 @@ def move_tableau_to_tableau(
     src = state.tableau[src_pile]
     dest = state.tableau[dest_pile]
 
-    # Validate we can pick from source
     if not can_pick_from_tableau(src, card_index):
         return MoveResult(False, "Cannot pick from that position")
 
-    # Get the cards to move
     cards_to_move = src[card_index:]
     moving_card = cards_to_move[0]
 
-    # Validate we can place on destination
     if not can_place_on_tableau(moving_card, dest):
         return MoveResult(False, "Cannot place there")
 
-    # Execute the move
     state.tableau[src_pile] = src[:card_index]
     state.tableau[dest_pile] = dest + cards_to_move
 
-    # Auto-flip exposed card
     _flip_top_if_needed(state.tableau[src_pile])
 
     return MoveResult(True)
@@ -75,7 +70,6 @@ def move_waste_to_tableau(state: GameState, dest_pile: int) -> MoveResult:
     if not can_place_on_tableau(card, dest):
         return MoveResult(False, "Cannot place there")
 
-    # Execute the move
     state.waste.pop()
     state.tableau[dest_pile].append(card)
 
@@ -94,7 +88,6 @@ def move_waste_to_foundation(state: GameState, dest_foundation: int) -> MoveResu
     if not can_place_on_foundation(card, dest, foundation_suit):
         return MoveResult(False, "Cannot place on foundation")
 
-    # Execute the move
     state.waste.pop()
     state.foundations[dest_foundation].append(card)
 
@@ -123,11 +116,9 @@ def move_tableau_to_foundation(
     if not can_place_on_foundation(card, dest, foundation_suit):
         return MoveResult(False, "Cannot place on foundation")
 
-    # Execute the move
     state.tableau[src_pile].pop()
     state.foundations[dest_foundation].append(card)
 
-    # Auto-flip exposed card
     _flip_top_if_needed(state.tableau[src_pile])
 
     return MoveResult(True)
@@ -150,7 +141,6 @@ def move_foundation_to_tableau(
     if not can_place_on_tableau(card, dest):
         return MoveResult(False, "Cannot place on tableau")
 
-    # Execute the move
     state.foundations[src_foundation].pop()
     state.tableau[dest_pile].append(card)
 
@@ -167,14 +157,11 @@ def draw_from_stock(state: GameState, draw_count: int = 1) -> MoveResult:
     if not can_draw_from_stock(state):
         return MoveResult(False, "Stock is empty")
 
-    # Determine how many cards to draw
     num_to_draw = min(draw_count, len(state.stock))
 
-    # Move cards from top of stock to waste
-    # Stock is a list where last element is "top"
+    # Stock uses list-end as "top" so pop() yields the next card to draw
     for _ in range(num_to_draw):
         card = state.stock.pop()
-        # Flip face up for waste
         if not card.face_up:
             card = card.flip()
         state.waste.append(card)
@@ -212,7 +199,7 @@ def recycle_waste_to_stock(state: GameState) -> MoveResult:
     if not state.waste:
         return MoveResult(False, "Waste is empty")
 
-    # Reverse waste and flip all cards face down
+    # Popping from waste end-to-end reverses order, matching how stock was originally dealt
     while state.waste:
         card = state.waste.pop()
         if card.face_up:

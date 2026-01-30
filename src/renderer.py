@@ -88,7 +88,6 @@ def render_card_lines(card: Optional[Card]) -> List[str]:
 
 def render_empty_slot_with_label(label: str) -> List[str]:
     """Render an empty slot with a label inside."""
-    # Center the label
     padded = f"{label:^3}"
     return [
         "┌ ─ ┐",
@@ -136,7 +135,7 @@ def get_max_tableau_height(state: GameState) -> int:
     max_height = 0
     for pile in state.tableau:
         if pile:
-            # Height = overlap lines for all but last + full card for last
+            # Each card except the last only contributes its overlap rows; the final card is fully visible
             pile_height = (len(pile) - 1) * CARD_OVERLAP_Y + CARD_HEIGHT
             max_height = max(max_height, pile_height)
     return max_height
@@ -178,11 +177,8 @@ def draw_card_top_only(
 
 def draw_border(canvas: List[List[str]], width: int, height: int) -> None:
     """Draw a border around the play area."""
-    # Top border
     draw_text(canvas, 0, 0, "╔" + "═" * (width - 2) + "╗")
-    # Bottom border
     draw_text(canvas, 0, height - 1, "╚" + "═" * (width - 2) + "╝")
-    # Side borders
     for y in range(1, height - 1):
         canvas[y][0] = "║"
         canvas[y][width - 1] = "║"
@@ -261,24 +257,20 @@ def render_board(
     canvas = create_canvas(BOARD_WIDTH, BOARD_HEIGHT)
     draw_border(canvas, BOARD_WIDTH, BOARD_HEIGHT)
 
-    # Title
     title = "═══ KLONDIKE SOLITAIRE ═══"
     draw_text(canvas, (BOARD_WIDTH - len(title)) // 2, 0, title)
 
-    # Draw stock
     stock_x, stock_y = get_stock_position()
     if state.stock:
-        # Show face-down card representing stock
+        # Render as a single face-down card regardless of how many remain
         draw_card(canvas, stock_x, stock_y, Card(Rank.ACE, Suit.SPADES, face_up=False))
     else:
-        draw_card(canvas, stock_x, stock_y, None)  # Empty slot
+        draw_card(canvas, stock_x, stock_y, None)
     draw_text(canvas, stock_x, stock_y + CARD_HEIGHT, "STK")
 
-    # Draw cursor on stock if applicable
     if cursor_zone == "stock":
         draw_cursor(canvas, stock_x, stock_y)
 
-    # Draw waste
     waste_x, waste_y = get_waste_position()
     if state.waste:
         draw_card(canvas, waste_x, waste_y, state.waste[-1])
@@ -286,11 +278,9 @@ def render_board(
         draw_card(canvas, waste_x, waste_y, None)
     draw_text(canvas, waste_x, waste_y + CARD_HEIGHT, "WST")
 
-    # Draw cursor on waste if applicable
     if cursor_zone == "waste":
         draw_cursor(canvas, waste_x, waste_y)
 
-    # Draw foundations
     foundation_suits = [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES]
     for i, suit in enumerate(foundation_suits):
         fx, fy = get_foundation_position(i)
@@ -298,26 +288,22 @@ def render_board(
         if pile:
             draw_card(canvas, fx, fy, pile[-1])
         else:
-            # Show suit symbol in empty foundation
+            # Empty foundations show their target suit so the player knows which card to look for
             lines = render_empty_slot_with_label(suit.symbol)
             for j, line in enumerate(lines):
                 draw_text(canvas, fx, fy + j, line)
 
-        # Draw cursor on foundation if applicable
         if cursor_zone == "foundation" and cursor_index == i:
             draw_cursor(canvas, fx, fy)
-        # Draw highlight for valid destination
         elif i in highlighted_foundations:
             draw_highlight(canvas, fx, fy)
 
     draw_text(canvas, FOUNDATION_START_X + 7, FOUNDATION_Y + CARD_HEIGHT, "FOUNDATIONS")
 
-    # Draw tableau piles
     for pile_idx in range(7):
         tx, ty = get_tableau_pile_positions(pile_idx)
         pile = state.tableau[pile_idx]
 
-        # Pile label
         draw_text(canvas, tx + 1, ty - 1, f"T{pile_idx + 1}")
 
         if not pile:
@@ -328,7 +314,6 @@ def render_board(
                 draw_highlight(canvas, tx, ty)
             continue
 
-        # Draw cards with overlap
         for card_idx, card in enumerate(pile):
             card_y = get_tableau_card_y(pile, card_idx)
             is_last = (card_idx == len(pile) - 1)
@@ -338,23 +323,20 @@ def render_board(
             else:
                 draw_card_top_only(canvas, tx, card_y, card)
 
-        # Draw cursor on tableau if applicable
         if cursor_zone == "tableau" and cursor_index == pile_idx:
-            # Cursor on specific card in pile
             cursor_y = get_tableau_card_y(pile, cursor_card_index)
-            # Height of cursor: from this card to end of pile
+            # Cursor bracket must span the entire selected run, not just one card
             remaining_cards = len(pile) - cursor_card_index
             if remaining_cards == 1:
                 cursor_height = CARD_HEIGHT
             else:
                 cursor_height = (remaining_cards - 1) * CARD_OVERLAP_Y + CARD_HEIGHT
             draw_cursor(canvas, tx, cursor_y, cursor_height)
-        # Draw highlight for valid destination (on the bottom card)
         elif pile_idx in highlighted_tableau:
+            # Highlight the bottom card because that is where a drop would land
             bottom_card_y = get_tableau_card_y(pile, len(pile) - 1)
             draw_highlight(canvas, tx, bottom_card_y)
 
-    # Status area
     status_y = BOARD_HEIGHT - 4
     draw_text(canvas, 2, status_y, "─" * (BOARD_WIDTH - 4))
     draw_text(canvas, 2, status_y + 1, "[H]elp  [U]ndo  [R]estart  [Q]uit")

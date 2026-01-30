@@ -175,17 +175,16 @@ class SolitaireUI:
             sys.exit(1)
 
         with self.term.fullscreen(), self.term.cbreak(), self.term.hidden_cursor():
-            # Check for saved game
             if self.save_manager.has_save():
                 saved_data = self.save_manager.load_game()
                 if saved_data:
                     if self._prompt_resume_game(saved_data['move_count'], saved_data['elapsed_time']):
                         self._load_saved_game(saved_data)
                         self.message = "Game resumed!"
-                        # Delete save file after loading
+                        # Remove the on-disk copy so it does not re-prompt on the next launch
                         self.save_manager.delete_save()
                     else:
-                        # Start new game, delete save
+                        # Player declined resume; clean up so the stale file does not reappear
                         self.save_manager.delete_save()
                         self.message = "New game started!"
                     self.needs_redraw = True
@@ -201,10 +200,9 @@ class SolitaireUI:
 
     def _render(self) -> None:
         """Render the game board."""
-        # Build output buffer instead of printing directly
+        # Accumulate into a single string so the terminal sees one write, avoiding flicker
         output_lines = []
 
-        # Render the board
         highlighted_tableau = self.highlighted.tableau_piles if self.highlighted else None
         highlighted_foundations = self.highlighted.foundation_piles if self.highlighted else None
         canvas = render_board(
@@ -216,50 +214,41 @@ class SolitaireUI:
             highlighted_foundations=highlighted_foundations,
         )
 
-        # Apply colors to canvas
         for row in canvas:
             line = ''.join(row)
             line = self._colorize_line(line)
             output_lines.append(line)
 
-        # Center the board
         term_width = self.term.width or BOARD_WIDTH
         pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
         padding = ' ' * pad_left
 
-        # Build complete frame
         frame = self.term.home + self.term.clear
 
         for y, line in enumerate(output_lines):
             frame += self.term.move_xy(0, y) + padding + line
 
-        # Draw status bar
         status_y = BOARD_HEIGHT
         elapsed = self._get_elapsed_time()
         time_text = self._format_time(elapsed)
         move_text = f"Moves: {self.move_count}"
         timer_text = f"Time: {time_text}"
-        # Display moves and timer on same line
         status_line = f"{move_text}    {timer_text}"
         frame += self.term.move_xy(pad_left + 2, status_y - 4) + self.term.bright_white(status_line)
 
-        # Message line
         msg_color = self.term.bright_yellow if "!" in self.message or "Invalid" in self.message else self.term.bright_cyan
-        # Clear the message line first
+        # Overwrite with spaces before writing new text so stale characters do not bleed through
         frame += self.term.move_xy(pad_left + 2, status_y - 2) + ' ' * (BOARD_WIDTH - 4)
         frame += self.term.move_xy(pad_left + 2, status_y - 2) + msg_color(self.message[:BOARD_WIDTH - 4])
 
-        # Selection indicator
         frame += self.term.move_xy(pad_left + 2, status_y - 1) + ' ' * (BOARD_WIDTH - 4)
         if self.selection:
             sel_text = f"Selected: {self._describe_selection()}"
             frame += self.term.move_xy(pad_left + 2, status_y - 1) + self.term.bright_green(sel_text)
 
-        # Help overlay
         if self.show_help:
             frame += self._render_help_str(pad_left)
 
-        # Output entire frame at once
         print(frame, end='', flush=True)
 
     def _colorize_line(self, line: str) -> str:
@@ -277,7 +266,6 @@ class SolitaireUI:
             elif char == "]":
                 result += self.term.bright_cyan_on_blue(char)
             elif char == "*":
-                # Highlight marker for valid destinations
                 result += self.term.bright_yellow_on_green(char)
             elif char == "░":
                 result += self.term.blue(char)
@@ -303,12 +291,12 @@ class SolitaireUI:
         if not key:
             return
 
-        # Clear highlighting on any input
+        # Highlights are ephemeral; any keypress dismisses them so the player does not see stale markers
         if self.highlighted:
             self.highlighted = None
             self.needs_redraw = True
 
-        # Clear previous non-error message
+        # Errors stay visible until the next action; informational messages vanish immediately
         if "Invalid" not in self.message and "Cannot" not in self.message:
             self.message = ""
 
@@ -365,21 +353,18 @@ class SolitaireUI:
         card = None
 
         if self.selection:
-            # Show placements for selected card
             card = self._get_selected_card()
         else:
-            # Show placements for card under cursor
             card = self._get_card_under_cursor()
 
         if card is None:
             self.message = "No card to show placements for!"
             return
 
-        # Find valid destinations
         tableau_dests = get_valid_tableau_destinations(card, self.state)
         foundation_dests = get_valid_foundation_destinations(card, self.state)
 
-        # For runs (multiple cards), can't go to foundation
+        # Foundation only accepts single cards; a multi-card run from tableau must stay on tableau
         if self.selection and self.selection.zone == CursorZone.TABLEAU:
             pile = self.state.tableau[self.selection.pile_index]
             if len(pile) - self.selection.card_index > 1:
@@ -469,7 +454,7 @@ class SolitaireUI:
         if self.selection is None:
             return
 
-        # Cancel if selecting same location
+        # Re-entering on the same pile is the keyboard equivalent of clicking to deselect
         if (self.cursor.zone == self.selection.zone and
             self.cursor.pile_index == self.selection.pile_index):
             self._cancel_selection()
@@ -642,7 +627,7 @@ class SolitaireUI:
         # Delete the save file — a lost game should not be resumable
         self.save_manager.delete_save()
 
-        # Show loss prompt and wait for acknowledgement
+        # Block until the player explicitly chooses restart or quit so they can read the result
         term_width = self.term.width or BOARD_WIDTH
         pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
         status_y = BOARD_HEIGHT - 1
@@ -737,21 +722,17 @@ class SolitaireUI:
             self._pause_timer()
             elapsed = int(self._get_elapsed_time())
 
-            # Delete save file since game is complete
+            # A completed game should not prompt for resume on the next launch
             self.save_manager.delete_save()
 
-            # Show win message
             self.message = f"CONGRATULATIONS! You won in {self.move_count} moves and {self._format_time(elapsed)}!"
             self.needs_redraw = True
             self._render()
 
-            # Prompt for initials
             initials = self._prompt_initials()
 
-            # Add to leaderboard
             position = self.leaderboard.add_entry(initials, self.move_count, elapsed, self.config.draw_count)
 
-            # Show leaderboard with their entry
             self._show_leaderboard_after_win(position)
 
             self.running = False
@@ -764,10 +745,8 @@ class SolitaireUI:
         initials = ""
 
         while len(initials) < 3:
-            # Render current state
             frame = self.term.home + self.term.clear
 
-            # Draw the board
             highlighted_tableau = self.highlighted.tableau_piles if self.highlighted else None
             highlighted_foundations = self.highlighted.foundation_piles if self.highlighted else None
             canvas = render_board(
@@ -792,14 +771,12 @@ class SolitaireUI:
             for y, line in enumerate(output_lines):
                 frame += self.term.move_xy(0, y) + padding + line
 
-            # Draw initials prompt
             status_y = BOARD_HEIGHT
             prompt_display = render_initials_prompt(initials)
             frame += self.term.move_xy(pad_left + 2, status_y - 2) + self.term.bright_cyan(prompt_display)
 
             print(frame, end='', flush=True)
 
-            # Get input
             key = self.term.inkey()
 
             if key.name == 'KEY_ESCAPE':
@@ -816,13 +793,11 @@ class SolitaireUI:
         """Show leaderboard after winning, highlighting the player's position."""
         lines = self.leaderboard.format_leaderboard(self.config.draw_count)
 
-        # Add position message if in top 20
         if position > 0:
             msg = f"You placed #{position} on the leaderboard!"
         else:
             msg = "You didn't make the top 20, but great job!"
 
-        # Render leaderboard
         frame = self.term.home + self.term.clear
 
         term_width = self.term.width or BOARD_WIDTH
@@ -832,7 +807,6 @@ class SolitaireUI:
         for i, line in enumerate(lines):
             frame += self.term.move_xy(start_x, start_y + i) + self.term.bright_white(line)
 
-        # Show message
         frame += self.term.move_xy(start_x, start_y + len(lines) + 2) + self.term.bright_yellow(msg)
         frame += self.term.move_xy(start_x, start_y + len(lines) + 4) + self.term.bright_cyan("Press any key to exit.")
 
@@ -845,10 +819,9 @@ class SolitaireUI:
 
         lines = self.leaderboard.format_leaderboard(self.config.draw_count)
 
-        # Render overlay
         frame = self.term.home + self.term.clear
 
-        # First render the game board in background
+        # Paint the board behind the overlay so it remains visible as context
         highlighted_tableau = self.highlighted.tableau_piles if self.highlighted else None
         highlighted_foundations = self.highlighted.foundation_piles if self.highlighted else None
         canvas = render_board(
@@ -873,14 +846,12 @@ class SolitaireUI:
         for y, line in enumerate(output_lines):
             frame += self.term.move_xy(0, y) + padding + line
 
-        # Draw leaderboard overlay
         start_x = pad_left + (BOARD_WIDTH - 40) // 2
         start_y = 8
 
         for i, line in enumerate(lines):
             frame += self.term.move_xy(start_x, start_y + i) + self.term.black_on_bright_white(line)
 
-        # Show close instruction
         frame += self.term.move_xy(start_x, start_y + len(lines) + 1) + self.term.bright_cyan("Press any key to continue")
 
         print(frame, end='', flush=True)

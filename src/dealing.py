@@ -41,7 +41,6 @@ def deal_game(seed: Optional[int] = None) -> GameState:
     state = GameState()
     card_index = 0
 
-    # Deal to tableau: pile i gets i+1 cards
     for pile_idx in range(7):
         pile_size = pile_idx + 1
         pile_cards = []
@@ -50,7 +49,7 @@ def deal_game(seed: Optional[int] = None) -> GameState:
             card = shuffled[card_index]
             card_index += 1
 
-            # Only the top card (last dealt to this pile) is face up
+            # Klondike rule: only the last card dealt to each pile starts face-up
             is_top_card = (card_in_pile == pile_size - 1)
             if is_top_card:
                 card = card.flip()
@@ -59,7 +58,6 @@ def deal_game(seed: Optional[int] = None) -> GameState:
 
         state.tableau[pile_idx] = pile_cards
 
-    # Remaining cards go to stock (face down)
     state.stock = shuffled[card_index:]
 
     return state

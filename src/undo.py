@@ -17,7 +17,7 @@ class UndoStack:
         # Deep copy to ensure independence
         self._stack.append(deepcopy(state))
 
-        # Enforce max size by removing oldest
+        # Without a cap the stack would grow unbounded over a long session
         while len(self._stack) > self._max_size:
             self._stack.pop(0)
 

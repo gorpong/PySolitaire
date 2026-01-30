@@ -62,7 +62,7 @@ def render_resume_prompt_lines(move_count: int, elapsed_time: float) -> List[str
     """
     time_str = format_time(elapsed_time)
     info_line = f"            Moves: {move_count}    Time: {time_str}"
-    # Pad to fit in the box (58 chars inner width)
+    # f-string width must match the box border width or the line will overflow
     info_line = f"║{info_line:<58}║"
 
     return [
@@ -137,7 +137,6 @@ def render_win_leaderboard_lines(
     """
     lines = render_leaderboard_overlay_lines(draw_mode, entries)
 
-    # Add position message
     if position > 0:
         msg = f"You placed #{position} on the leaderboard!"
     else:

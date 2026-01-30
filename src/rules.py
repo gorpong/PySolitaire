@@ -23,15 +23,12 @@ def can_place_on_tableau(card: Card, pile: List[Card]) -> bool:
 
     top_card = pile[-1]
 
-    # Can't place on face-down card
     if not top_card.face_up:
         return False
 
-    # Must be opposite color
     if not card.is_opposite_color(top_card):
         return False
 
-    # Must be exactly one rank lower
     return card.rank.value == top_card.rank.value - 1
 
 
@@ -43,7 +40,6 @@ def can_place_on_foundation(card: Card, pile: List[Card], foundation_suit: Suit)
     - Empty pile: only Ace of matching suit
     - Non-empty pile: next rank up, same suit
     """
-    # Must match the foundation's suit
     if card.suit != foundation_suit:
         return False
 
@@ -52,7 +48,6 @@ def can_place_on_foundation(card: Card, pile: List[Card], foundation_suit: Suit)
 
     top_card = pile[-1]
 
-    # Must be exactly one rank higher than top card
     return card.rank.value == top_card.rank.value + 1
 
 
