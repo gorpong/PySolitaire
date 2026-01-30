@@ -6,6 +6,7 @@ from typing import Optional, List, Set, Tuple, Dict, Any
 from dataclasses import dataclass
 from blessed import Terminal
 
+from src.config import GameConfig
 from src.model import Card, Suit, Rank, GameState
 from src.dealing import deal_game
 from src.cursor import Cursor, CursorZone
@@ -67,12 +68,12 @@ class HighlightedDestinations:
 class SolitaireUI:
     """Main UI class for terminal Solitaire game."""
 
-    def __init__(self, seed: Optional[int] = None, draw_count: int = 1):
+    def __init__(self, config: GameConfig):
         self.term = Terminal()
-        self.state = deal_game(seed)
+        self.config = config
+        self.state = deal_game(self.config.seed)
         self.cursor = Cursor()
         self.selection: Optional[Selection] = None
-        self.draw_count = draw_count
         self.message = "Welcome to Solitaire! Use arrows to move, Enter to select."
         self.move_count = 0
         self.running = True
@@ -572,16 +573,16 @@ class SolitaireUI:
         """Handle space bar - draw from stock or recycle waste."""
         if self.state.stock:
             self._save_for_undo()
-            result = draw_from_stock(self.state, self.draw_count)
+            result = draw_from_stock(self.state, self.config.draw_count)
             if result.success:
                 self.move_count += 1
-                drawn = min(self.draw_count, len(self.state.waste))
+                drawn = min(self.config.draw_count, len(self.state.waste))
                 self.message = f"Drew {drawn} card(s) from stock."
         elif self.state.waste:
             # A full pass through the stock just completed — check whether
             # the player made any moves during that pass before recycling.
             if not self.made_progress_since_last_recycle:
-                if self.draw_count == 1:
+                if self.config.draw_count == 1:
                     self._end_game_loss()
                     return
                 else:
@@ -696,7 +697,7 @@ class SolitaireUI:
                 self.state,
                 self.move_count,
                 elapsed,
-                self.draw_count,
+                self.config.draw_count,
                 self.made_progress_since_last_recycle,
             )
             self.running = False
@@ -748,7 +749,7 @@ class SolitaireUI:
             initials = self._prompt_initials()
 
             # Add to leaderboard
-            position = self.leaderboard.add_entry(initials, self.move_count, elapsed, self.draw_count)
+            position = self.leaderboard.add_entry(initials, self.move_count, elapsed, self.config.draw_count)
 
             # Show leaderboard with their entry
             self._show_leaderboard_after_win(position)
@@ -813,7 +814,7 @@ class SolitaireUI:
 
     def _show_leaderboard_after_win(self, position: int) -> None:
         """Show leaderboard after winning, highlighting the player's position."""
-        lines = self.leaderboard.format_leaderboard(self.draw_count)
+        lines = self.leaderboard.format_leaderboard(self.config.draw_count)
 
         # Add position message if in top 20
         if position > 0:
@@ -842,7 +843,7 @@ class SolitaireUI:
         """Show leaderboard overlay during game (L key)."""
         self._pause_timer()
 
-        lines = self.leaderboard.format_leaderboard(self.draw_count)
+        lines = self.leaderboard.format_leaderboard(self.config.draw_count)
 
         # Render overlay
         frame = self.term.home + self.term.clear
@@ -949,7 +950,8 @@ def main():
             print(f"Requires terminal size of at least {MIN_TERM_WIDTH}x{MIN_TERM_HEIGHT}")
             sys.exit(0)
 
-    ui = SolitaireUI(seed=seed, draw_count=draw_count)
+    config = GameConfig(seed=seed, draw_count=draw_count)
+    ui = SolitaireUI(config)
     ui.run()
 
 
