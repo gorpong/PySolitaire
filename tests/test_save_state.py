@@ -1,5 +1,6 @@
 """Tests for save state functionality."""
 
+import json
 import tempfile
 from pathlib import Path
 import pytest
@@ -99,7 +100,7 @@ class TestSaveStateManager:
         manager = SaveStateManager(temp_save_file)
         state = deal_game(seed=42)
 
-        manager.save_game(state, move_count=10, elapsed_time=120.5, draw_count=1, stock_pass_count=0)
+        manager.save_game(state, move_count=10, elapsed_time=120.5, draw_count=1, made_progress_since_last_recycle=True)
 
         assert manager.has_save() is True
         assert temp_save_file.exists()
@@ -109,14 +110,14 @@ class TestSaveStateManager:
         manager = SaveStateManager(temp_save_file)
         state = deal_game(seed=42)
 
-        manager.save_game(state, move_count=10, elapsed_time=120.5, draw_count=1, stock_pass_count=0)
+        manager.save_game(state, move_count=10, elapsed_time=120.5, draw_count=1, made_progress_since_last_recycle=True)
 
         loaded = manager.load_game()
         assert loaded is not None
         assert loaded['move_count'] == 10
         assert loaded['elapsed_time'] == 120.5
         assert loaded['draw_count'] == 1
-        assert loaded['stock_pass_count'] == 0
+        assert loaded['made_progress_since_last_recycle'] is True
 
     def test_load_nonexistent_returns_none(self, temp_save_file):
         """Test loading when no save exists returns None."""
@@ -129,7 +130,7 @@ class TestSaveStateManager:
         manager = SaveStateManager(temp_save_file)
         state = deal_game(seed=42)
 
-        manager.save_game(state, move_count=10, elapsed_time=120.5, draw_count=1, stock_pass_count=0)
+        manager.save_game(state, move_count=10, elapsed_time=120.5, draw_count=1, made_progress_since_last_recycle=True)
         assert manager.has_save() is True
 
         manager.delete_save()
@@ -149,7 +150,7 @@ class TestSaveStateManager:
         initial_stock_len = len(state.stock)
         initial_tableau_0_len = len(state.tableau[0])
 
-        manager.save_game(state, move_count=5, elapsed_time=60.0, draw_count=1, stock_pass_count=0)
+        manager.save_game(state, move_count=5, elapsed_time=60.0, draw_count=1, made_progress_since_last_recycle=True)
         loaded = manager.load_game()
 
         assert len(loaded['state'].stock) == initial_stock_len
@@ -165,3 +166,33 @@ class TestSaveStateManager:
 
         loaded = manager.load_game()
         assert loaded is None
+
+    def test_old_format_save_defaults_progress_flag(self, temp_save_file):
+        """Old save files using stock_pass_count load with progress defaulted to False.
+
+        Before this refactor the JSON key was stock_pass_count (an int).
+        A save written by that version lacks made_progress_since_last_recycle,
+        so load_game must default it to False (conservative: assume no progress)
+        rather than returning None and discarding a perfectly valid saved game.
+        """
+        state = deal_game(seed=42)
+        old_format_data = {
+            'state': serialize_game_state(state),
+            'move_count': 15,
+            'elapsed_time': 200.0,
+            'draw_count': 1,
+            'stock_pass_count': 1,  # old key — made_progress_since_last_recycle is absent
+        }
+
+        with open(temp_save_file, 'w') as f:
+            json.dump(old_format_data, f)
+
+        manager = SaveStateManager(temp_save_file)
+        loaded = manager.load_game()
+
+        # Must load successfully, not collapse to None
+        assert loaded is not None
+        assert loaded['move_count'] == 15
+        assert loaded['elapsed_time'] == 200.0
+        # Progress flag defaults to False when missing from the file
+        assert loaded['made_progress_since_last_recycle'] is False

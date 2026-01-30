@@ -17,6 +17,7 @@ from src.moves import (
     move_foundation_to_tableau,
     draw_from_stock,
     recycle_waste_to_stock,
+    bury_top_of_stock,
     MoveResult,
 )
 from src.rules import (
@@ -77,7 +78,9 @@ class SolitaireUI:
         self.running = True
         self.show_help = False
         self.undo_stack = UndoStack()
-        self.stock_pass_count = 0
+        # True until the next recycle; any successful move flips it back to True
+        # so we only trigger stall detection after a full pass with zero progress.
+        self.made_progress_since_last_recycle = True
         self.needs_redraw = True  # Track if redraw is needed
         self.highlighted: Optional[HighlightedDestinations] = None  # Valid destinations to show
         # Timer tracking
@@ -130,8 +133,8 @@ class SolitaireUI:
         """Load saved game data into current game state."""
         self.state = saved_data['state']
         self.move_count = saved_data['move_count']
-        self.stock_pass_count = saved_data['stock_pass_count']
-        # Restore timer
+        self.made_progress_since_last_recycle = saved_data['made_progress_since_last_recycle']
+        # Restore timer so the elapsed count continues from where it was
         saved_elapsed = saved_data['elapsed_time']
         self.start_time = time.time() - saved_elapsed
         self.paused = False
@@ -528,7 +531,7 @@ class SolitaireUI:
 
         if result.success:
             self.move_count += 1
-            self.stock_pass_count = 0
+            self.made_progress_since_last_recycle = True
             self.message = "Moved to foundation!"
             self.selection = None
             self._check_win()
@@ -558,7 +561,7 @@ class SolitaireUI:
 
         if result.success:
             self.move_count += 1
-            self.stock_pass_count = 0
+            self.made_progress_since_last_recycle = True
             self.message = "Moved!"
             self.selection = None
         else:
@@ -566,7 +569,7 @@ class SolitaireUI:
             self.message = f"Invalid move: {result.message}"
 
     def _handle_space(self) -> None:
-        """Handle space bar - draw from stock."""
+        """Handle space bar - draw from stock or recycle waste."""
         if self.state.stock:
             self._save_for_undo()
             result = draw_from_stock(self.state, self.draw_count)
@@ -575,19 +578,101 @@ class SolitaireUI:
                 drawn = min(self.draw_count, len(self.state.waste))
                 self.message = f"Drew {drawn} card(s) from stock."
         elif self.state.waste:
+            # A full pass through the stock just completed — check whether
+            # the player made any moves during that pass before recycling.
+            if not self.made_progress_since_last_recycle:
+                if self.draw_count == 1:
+                    self._end_game_loss()
+                    return
+                else:
+                    # Draw-3: offer to bury the top waste card as a last resort
+                    should_bury = self._prompt_bury_card()
+                    if not should_bury:
+                        self._end_game_loss()
+                        return
+
             self._save_for_undo()
             result = recycle_waste_to_stock(self.state)
             if result.success:
-                self.stock_pass_count += 1
+                # Reset the progress flag so the *next* pass is tracked cleanly
+                self.made_progress_since_last_recycle = False
                 self.message = "Recycled waste to stock."
-                if self.draw_count == 1 and self.stock_pass_count >= 2:
-                    self._check_loss()
         else:
             self.message = "Both stock and waste are empty!"
 
-    def _check_loss(self) -> None:
-        """Check if player has lost (Draw-1 mode: no moves after full pass)."""
-        self.message = "No progress made. Game may be unwinnable. Press R to restart or keep trying."
+    def _prompt_bury_card(self) -> bool:
+        """Show a Y/N dialog asking the player to bury the top waste card.
+
+        Pauses the timer while the prompt is visible so idle time during the
+        decision does not count against the player.
+
+        Returns True if the player chose to bury, False otherwise.
+        """
+        self._pause_timer()
+        self.message = "No progress this pass. Bury top card? (Y/N)"
+        self.needs_redraw = True
+        self._render()
+
+        while True:
+            key = self.term.inkey()
+            if key.lower() == 'y':
+                # Execute the bury before the recycle so the next Draw-3
+                # cycle starts with a different card sequence.
+                bury_top_of_stock(self.state)
+                self._resume_timer()
+                self.message = "Top card buried. Recycling stock..."
+                return True
+            elif key.lower() == 'n':
+                self._resume_timer()
+                return False
+
+    def _end_game_loss(self) -> None:
+        """Present the loss screen and end the game.
+
+        Mirrors _check_win's structure: pause the timer, show a dialog, and
+        set self.running = False so the main loop exits.
+        """
+        self._pause_timer()
+        self.selection = None
+        self.message = "No legal moves remain. Game over."
+        self.needs_redraw = True
+        self._render()
+
+        # Delete the save file — a lost game should not be resumable
+        self.save_manager.delete_save()
+
+        # Show loss prompt and wait for acknowledgement
+        term_width = self.term.width or BOARD_WIDTH
+        pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
+        status_y = BOARD_HEIGHT - 1
+        loss_line = "Press R to play again or Q to quit."
+        self.needs_redraw = False
+        print(
+            self.term.move_xy(pad_left + 2, status_y)
+            + self.term.bright_red(loss_line),
+            end='',
+            flush=True,
+        )
+
+        while True:
+            key = self.term.inkey()
+            if key.lower() == 'r':
+                # Restart in place so the player can continue the session
+                self.start_time = time.time()
+                self.paused = False
+                self.pause_start = 0.0
+                self.state = deal_game()
+                self.cursor = Cursor()
+                self.selection = None
+                self.move_count = 0
+                self.undo_stack.clear()
+                self.made_progress_since_last_recycle = True
+                self.message = "New game started!"
+                self.needs_redraw = True
+                return
+            elif key.lower() == 'q':
+                self.running = False
+                return
 
     def _cancel_selection(self) -> None:
         """Cancel current selection."""
@@ -605,14 +690,14 @@ class SolitaireUI:
         self._render()
         key = self.term.inkey()
         if key.lower() == 'q':
-            # Save game state before quitting
+            # Save game state so the session can be resumed next time
             elapsed = self._get_elapsed_time()
             self.save_manager.save_game(
                 self.state,
                 self.move_count,
                 elapsed,
                 self.draw_count,
-                self.stock_pass_count,
+                self.made_progress_since_last_recycle,
             )
             self.running = False
         else:
@@ -628,7 +713,7 @@ class SolitaireUI:
         self._render()
         key = self.term.inkey()
         if key.lower() == 'r':
-            # Reset timer on restart
+            # Reset timer and progress tracking on restart
             self.start_time = time.time()
             self.paused = False
             self.pause_start = 0.0
@@ -637,7 +722,7 @@ class SolitaireUI:
             self.selection = None
             self.move_count = 0
             self.undo_stack.clear()
-            self.stock_pass_count = 0
+            self.made_progress_since_last_recycle = True
             self.message = "New game started!"
         else:
             self._resume_timer()

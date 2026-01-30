@@ -182,6 +182,23 @@ def draw_from_stock(state: GameState, draw_count: int = 1) -> MoveResult:
     return MoveResult(True)
 
 
+def bury_top_of_stock(state: GameState) -> MoveResult:
+    """
+    Move the top card of stock to the bottom of stock.
+
+    Used in Draw-3 stall recovery: when a full pass through the stock
+    produced no legal moves, the player may bury the top card so the
+    next Draw-3 cycle sees a different sequence.
+    """
+    if not state.stock:
+        return MoveResult(False, "Stock is empty")
+
+    top_card = state.stock.pop()
+    state.stock.insert(0, top_card)
+
+    return MoveResult(True)
+
+
 def recycle_waste_to_stock(state: GameState) -> MoveResult:
     """
     Recycle waste pile back to stock.

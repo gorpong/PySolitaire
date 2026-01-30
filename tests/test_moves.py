@@ -10,6 +10,7 @@ from src.moves import (
     move_foundation_to_tableau,
     draw_from_stock,
     recycle_waste_to_stock,
+    bury_top_of_stock,
     MoveResult,
 )
 
@@ -341,6 +342,85 @@ class TestDrawFromStock:
 
         assert len(state.stock) == 0
         assert len(state.waste) == 2
+
+
+class TestBuryTopOfStock:
+    """Tests for burying the top stock card at the bottom."""
+
+    def test_bury_moves_top_to_bottom(self):
+        """Top card of stock ends up at index 0 after bury."""
+        state = GameState()
+        state.stock = [
+            make_card(Rank.ACE, Suit.HEARTS, face_up=False),    # index 0 (bottom)
+            make_card(Rank.TWO, Suit.HEARTS, face_up=False),    # index 1 (middle)
+            make_card(Rank.THREE, Suit.HEARTS, face_up=False),  # index 2 (top)
+        ]
+
+        result = bury_top_of_stock(state)
+
+        assert result.success is True
+        # THREE was on top (index 2), now at bottom (index 0)
+        assert state.stock[0].rank == Rank.THREE
+        # TWO is now on top (was middle, now last)
+        assert state.stock[-1].rank == Rank.TWO
+
+    def test_bury_two_card_stock_swaps(self):
+        """Two-card stock: the two cards swap positions."""
+        state = GameState()
+        state.stock = [
+            make_card(Rank.JACK, Suit.CLUBS, face_up=False),   # index 0 (bottom)
+            make_card(Rank.QUEEN, Suit.CLUBS, face_up=False),  # index 1 (top)
+        ]
+
+        result = bury_top_of_stock(state)
+
+        assert result.success is True
+        # QUEEN was top, now bottom
+        assert state.stock[0].rank == Rank.QUEEN
+        # JACK was bottom, now top
+        assert state.stock[-1].rank == Rank.JACK
+
+    def test_bury_single_card_stock_is_noop(self):
+        """Single-card stock: succeeds but order is unchanged."""
+        state = GameState()
+        state.stock = [
+            make_card(Rank.KING, Suit.SPADES, face_up=False),
+        ]
+
+        result = bury_top_of_stock(state)
+
+        assert result.success is True
+        assert len(state.stock) == 1
+        assert state.stock[0].rank == Rank.KING
+
+    def test_bury_empty_stock_fails(self):
+        """Empty stock returns failure without modifying state."""
+        state = GameState()
+        state.stock = []
+
+        result = bury_top_of_stock(state)
+
+        assert result.success is False
+        assert len(state.stock) == 0
+
+    def test_bury_preserves_card_count(self):
+        """Bury never adds or removes cards from stock."""
+        state = GameState()
+        state.stock = [
+            make_card(Rank.ACE, Suit.DIAMONDS, face_up=False),
+            make_card(Rank.TWO, Suit.DIAMONDS, face_up=False),
+            make_card(Rank.THREE, Suit.DIAMONDS, face_up=False),
+            make_card(Rank.FOUR, Suit.DIAMONDS, face_up=False),
+            make_card(Rank.FIVE, Suit.DIAMONDS, face_up=False),
+        ]
+        original_ranks = {card.rank for card in state.stock}
+
+        result = bury_top_of_stock(state)
+
+        assert result.success is True
+        assert len(state.stock) == 5
+        # Every rank that was in stock is still there
+        assert {card.rank for card in state.stock} == original_ranks
 
 
 class TestRecycleWasteToStock:

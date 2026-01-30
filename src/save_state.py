@@ -79,7 +79,7 @@ class SaveStateManager:
         move_count: int,
         elapsed_time: float,
         draw_count: int,
-        stock_pass_count: int,
+        made_progress_since_last_recycle: bool,
     ) -> None:
         """Save game state to disk."""
         data = {
@@ -87,7 +87,7 @@ class SaveStateManager:
             'move_count': move_count,
             'elapsed_time': elapsed_time,
             'draw_count': draw_count,
-            'stock_pass_count': stock_pass_count,
+            'made_progress_since_last_recycle': made_progress_since_last_recycle,
         }
 
         with open(self.path, 'w') as f:
@@ -96,8 +96,14 @@ class SaveStateManager:
     def load_game(self) -> Optional[Dict[str, Any]]:
         """Load game state from disk.
 
-        Returns dict with keys: state, move_count, elapsed_time, draw_count, stock_pass_count
-        or None if no save file exists or it's corrupted.
+        Returns dict with keys: state, move_count, elapsed_time, draw_count,
+        made_progress_since_last_recycle — or None if the file does not exist
+        or is structurally corrupted (missing core keys like state/move_count).
+
+        made_progress_since_last_recycle uses .get() with a False default so
+        that save files written before this field existed can still be loaded;
+        False is the conservative assumption (treat an unknown pass state as
+        stalled) and the flag will be persisted correctly on the next save.
         """
         if not self.path.exists():
             return None
@@ -111,10 +117,12 @@ class SaveStateManager:
                 'move_count': data['move_count'],
                 'elapsed_time': data['elapsed_time'],
                 'draw_count': data['draw_count'],
-                'stock_pass_count': data['stock_pass_count'],
+                'made_progress_since_last_recycle': data.get(
+                    'made_progress_since_last_recycle', False
+                ),
             }
         except (json.JSONDecodeError, KeyError, TypeError):
-            # Corrupted save file
+            # Covers corrupted JSON and saves missing core structural keys
             return None
 
     def delete_save(self) -> None:
