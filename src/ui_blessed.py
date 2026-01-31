@@ -92,6 +92,8 @@ class SolitaireUI:
         self.elapsed_time = 0.0  # Total elapsed game time
         self.paused = False
         self.pause_start = 0.0
+        # Gates idle redraws to 10 s so the timer tick doesn't flicker the screen.
+        self.last_timer_render = time.time()
         # Leaderboard and save state
         self.leaderboard = Leaderboard()
         self.save_manager = SaveStateManager()
@@ -197,9 +199,13 @@ class SolitaireUI:
                 if self.needs_redraw:
                     self._render()
                     self.needs_redraw = False
+                    # Reset so an input-driven render doesn't trigger a redundant idle redraw shortly after.
+                    self.last_timer_render = time.time()
                 else:
-                    # Periodically update to refresh timer even without input
-                    self._render()
+                    # 10 s idle tick; input-driven redraws already paint the clock.
+                    if time.time() - self.last_timer_render >= 10.0:
+                        self._render()
+                        self.last_timer_render = time.time()
                 self._handle_input()
 
     def _render(self) -> None:
