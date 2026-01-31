@@ -80,6 +80,7 @@ class SaveStateManager:
         elapsed_time: float,
         draw_count: int,
         made_progress_since_last_recycle: bool,
+        consecutive_burials: int = 0,
     ) -> None:
         """Save game state to disk."""
         data = {
@@ -88,6 +89,7 @@ class SaveStateManager:
             'elapsed_time': elapsed_time,
             'draw_count': draw_count,
             'made_progress_since_last_recycle': made_progress_since_last_recycle,
+            'consecutive_burials': consecutive_burials,
         }
 
         with open(self.path, 'w') as f:
@@ -97,13 +99,18 @@ class SaveStateManager:
         """Load game state from disk.
 
         Returns dict with keys: state, move_count, elapsed_time, draw_count,
-        made_progress_since_last_recycle — or None if the file does not exist
-        or is structurally corrupted (missing core keys like state/move_count).
+        made_progress_since_last_recycle, consecutive_burials — or None if the
+        file does not exist or is structurally corrupted (missing core keys
+        like state/move_count).
 
-        made_progress_since_last_recycle uses .get() with a False default so
-        that save files written before this field existed can still be loaded;
-        False is the conservative assumption (treat an unknown pass state as
-        stalled) and the flag will be persisted correctly on the next save.
+        made_progress_since_last_recycle defaults to True when missing so that
+        a resumed game is not falsely treated as stalled; we cannot know whether
+        the player saved at the start of a fresh pass or mid-pass, so the
+        benefit of the doubt avoids an unjust loss on resume.
+
+        consecutive_burials defaults to 0 when missing, granting the player the
+        full two-bury grace period on resume rather than collapsing a stall
+        streak that may never have started.
         """
         if not self.path.exists():
             return None
@@ -118,8 +125,9 @@ class SaveStateManager:
                 'elapsed_time': data['elapsed_time'],
                 'draw_count': data['draw_count'],
                 'made_progress_since_last_recycle': data.get(
-                    'made_progress_since_last_recycle', False
+                    'made_progress_since_last_recycle', True
                 ),
+                'consecutive_burials': data.get('consecutive_burials', 0),
             }
         except (json.JSONDecodeError, KeyError, TypeError):
             # Covers corrupted JSON and saves missing core structural keys

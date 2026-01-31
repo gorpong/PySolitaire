@@ -168,12 +168,13 @@ class TestSaveStateManager:
         assert loaded is None
 
     def test_old_format_save_defaults_progress_flag(self, temp_save_file):
-        """Old save files using stock_pass_count load with progress defaulted to False.
+        """Old save files missing made_progress_since_last_recycle default to True.
 
         Before this refactor the JSON key was stock_pass_count (an int).
         A save written by that version lacks made_progress_since_last_recycle,
-        so load_game must default it to False (conservative: assume no progress)
-        rather than returning None and discarding a perfectly valid saved game.
+        so load_game defaults it to True (benefit of the doubt: we cannot know
+        whether the player saved at the start of a fresh pass or in the middle
+        of one, so assume progress rather than risk a false loss on resume).
         """
         state = deal_game(seed=42)
         old_format_data = {
@@ -194,5 +195,55 @@ class TestSaveStateManager:
         assert loaded is not None
         assert loaded['move_count'] == 15
         assert loaded['elapsed_time'] == 200.0
-        # Progress flag defaults to False when missing from the file
-        assert loaded['made_progress_since_last_recycle'] is False
+        # Progress flag defaults to True when missing (benefit of the doubt)
+        assert loaded['made_progress_since_last_recycle'] is True
+
+    def test_save_and_load_consecutive_burials(self, temp_save_file):
+        """consecutive_burials round-trips through save and load.
+
+        This counter tracks how many times in a row the Draw-3 bury
+        mechanism fired without the player making a real move in between.
+        It must survive a quit/resume cycle so a stall streak is not
+        silently reset.
+        """
+        manager = SaveStateManager(temp_save_file)
+        state = deal_game(seed=42)
+
+        manager.save_game(
+            state,
+            move_count=20,
+            elapsed_time=300.0,
+            draw_count=3,
+            made_progress_since_last_recycle=False,
+            consecutive_burials=2,
+        )
+
+        loaded = manager.load_game()
+        assert loaded is not None
+        assert loaded['consecutive_burials'] == 2
+
+    def test_old_format_save_defaults_consecutive_burials_to_zero(self, temp_save_file):
+        """Save files written before consecutive_burials existed load with zero.
+
+        Zero is the generous default: it means no burials have happened yet
+        this stall streak, which gives the player the full two-bury grace
+        period on resume rather than falsely collapsing into an auto-loss.
+        """
+        state = deal_game(seed=42)
+        old_format_data = {
+            'state': serialize_game_state(state),
+            'move_count': 10,
+            'elapsed_time': 150.0,
+            'draw_count': 3,
+            'made_progress_since_last_recycle': False,
+            # consecutive_burials key is intentionally absent
+        }
+
+        with open(temp_save_file, 'w') as f:
+            json.dump(old_format_data, f)
+
+        manager = SaveStateManager(temp_save_file)
+        loaded = manager.load_game()
+
+        assert loaded is not None
+        assert loaded['consecutive_burials'] == 0

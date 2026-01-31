@@ -82,6 +82,9 @@ class SolitaireUI:
         # True until the next recycle; any successful move flips it back to True
         # so we only trigger stall detection after a full pass with zero progress.
         self.made_progress_since_last_recycle = True
+        # Counts consecutive Draw-3 burials with no real move in between;
+        # auto-loss fires when this reaches 2 so the bury loop cannot repeat forever.
+        self.consecutive_burials = 0
         self.needs_redraw = True  # Track if redraw is needed
         self.highlighted: Optional[HighlightedDestinations] = None  # Valid destinations to show
         # Timer tracking
@@ -135,6 +138,7 @@ class SolitaireUI:
         self.state = saved_data['state']
         self.move_count = saved_data['move_count']
         self.made_progress_since_last_recycle = saved_data['made_progress_since_last_recycle']
+        self.consecutive_burials = saved_data['consecutive_burials']
         # Restore timer so the elapsed count continues from where it was
         saved_elapsed = saved_data['elapsed_time']
         self.start_time = time.time() - saved_elapsed
@@ -518,6 +522,7 @@ class SolitaireUI:
         if result.success:
             self.move_count += 1
             self.made_progress_since_last_recycle = True
+            self.consecutive_burials = 0
             self.message = "Moved to foundation!"
             self.selection = None
             self._check_win()
@@ -548,6 +553,7 @@ class SolitaireUI:
         if result.success:
             self.move_count += 1
             self.made_progress_since_last_recycle = True
+            self.consecutive_burials = 0
             self.message = "Moved!"
             self.selection = None
         else:
@@ -571,11 +577,20 @@ class SolitaireUI:
                     self._end_game_loss()
                     return
                 else:
+                    # Two consecutive burials with no real move in between
+                    # means the deck is hopelessly stuck; end the game
+                    # automatically rather than prompting a third time.
+                    if self.consecutive_burials >= 2:
+                        self._end_game_loss()
+                        return
                     # Draw-3: offer to bury the top waste card as a last resort
                     should_bury = self._prompt_bury_card()
                     if not should_bury:
                         self._end_game_loss()
                         return
+                    # Bury succeeded; track it so we know how deep into the
+                    # stall streak we are before the next recycle.
+                    self.consecutive_burials += 1
 
             self._save_for_undo()
             result = recycle_waste_to_stock(self.state)
@@ -653,6 +668,7 @@ class SolitaireUI:
                 self.move_count = 0
                 self.undo_stack.clear()
                 self.made_progress_since_last_recycle = True
+                self.consecutive_burials = 0
                 self.message = "New game started!"
                 self.needs_redraw = True
                 return
@@ -684,6 +700,7 @@ class SolitaireUI:
                 elapsed,
                 self.config.draw_count,
                 self.made_progress_since_last_recycle,
+                self.consecutive_burials,
             )
             self.running = False
         else:
@@ -709,6 +726,7 @@ class SolitaireUI:
             self.move_count = 0
             self.undo_stack.clear()
             self.made_progress_since_last_recycle = True
+            self.consecutive_burials = 0
             self.message = "New game started!"
         else:
             self._resume_timer()
