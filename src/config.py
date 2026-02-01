@@ -10,6 +10,7 @@ class GameConfig:
 
     draw_count: int = 1  # Draw 1 or 3 cards from stock
     seed: Optional[int] = None  # Random seed for reproducibility
+    compact: bool = False  # True → 5×3 cards; False (default) → 7×5 cards
 
     def __post_init__(self):
         if self.draw_count not in (1, 3):

@@ -29,6 +29,8 @@ from src.rules import (
 )
 from src.renderer import (
     render_board,
+    LAYOUT_LARGE,
+    LAYOUT_COMPACT,
     BOARD_WIDTH,
     BOARD_HEIGHT,
 )
@@ -71,6 +73,7 @@ class SolitaireUI:
     def __init__(self, config: GameConfig):
         self.term = Terminal()
         self.config = config
+        self.layout = LAYOUT_COMPACT if config.compact else LAYOUT_LARGE
         self.state = deal_game(self.config.seed)
         self.cursor = Cursor()
         self.selection: Optional[Selection] = None
@@ -222,6 +225,7 @@ class SolitaireUI:
             cursor_card_index=self.cursor.card_index,
             highlighted_tableau=highlighted_tableau,
             highlighted_foundations=highlighted_foundations,
+            layout=self.layout,
         )
 
         for row in canvas:
@@ -780,6 +784,7 @@ class SolitaireUI:
                 cursor_card_index=self.cursor.card_index,
                 highlighted_tableau=highlighted_tableau,
                 highlighted_foundations=highlighted_foundations,
+                layout=self.layout,
             )
 
             output_lines = []
@@ -855,6 +860,7 @@ class SolitaireUI:
             cursor_card_index=self.cursor.card_index,
             highlighted_tableau=highlighted_tableau,
             highlighted_foundations=highlighted_foundations,
+            layout=self.layout,
         )
 
         output_lines = []
@@ -922,6 +928,7 @@ def main():
     """Entry point for the game."""
     seed = None
     draw_count = 1
+    compact = False
 
     args = sys.argv[1:]
     for i, arg in enumerate(args):
@@ -932,6 +939,8 @@ def main():
                 pass
         elif arg == "--draw3":
             draw_count = 3
+        elif arg == "--compact":
+            compact = True
         elif arg in ("--help", "-h"):
             print("PySolitaire - Terminal Klondike Solitaire")
             print()
@@ -940,12 +949,13 @@ def main():
             print("Options:")
             print("  --seed NUM   Use specific random seed for reproducible games")
             print("  --draw3      Draw 3 cards from stock (default: draw 1)")
+            print("  --compact    Use smaller 5×3 cards (default: 7×5)")
             print("  --help, -h   Show this help message")
             print()
             print(f"Requires terminal size of at least {MIN_TERM_WIDTH}x{MIN_TERM_HEIGHT}")
             sys.exit(0)
 
-    config = GameConfig(seed=seed, draw_count=draw_count)
+    config = GameConfig(seed=seed, draw_count=draw_count, compact=compact)
     ui = SolitaireUI(config)
     ui.run()
 

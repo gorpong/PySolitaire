@@ -15,6 +15,11 @@ class TestGameConfigDefaults:
         config = GameConfig()
         assert config.seed is None
 
+    def test_default_compact(self):
+        """compact defaults to False so large cards are shown without explicit opt-in."""
+        config = GameConfig()
+        assert config.compact is False
+
 
 class TestGameConfigValidation:
     """Tests for configuration validation."""
@@ -39,3 +44,8 @@ class TestGameConfigValidation:
         """An explicit integer seed is stored for reproducible games."""
         config = GameConfig(seed=42)
         assert config.seed == 42
+
+    def test_compact_true_accepted(self):
+        """Explicit compact=True selects the 5×3 card layout."""
+        config = GameConfig(compact=True)
+        assert config.compact is True
