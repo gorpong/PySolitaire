@@ -37,7 +37,7 @@ The game is designed to be **playable, deterministic, and test-driven**, while r
 
 Dependencies are intentionally minimal:
 
-```
+```python
 blessed>=1.20.0
 pytest>=8.0.0   # for development/testing
 ```
@@ -59,6 +59,44 @@ cd pysolitaire
 python -m venv .venv
 source .venv/bin/activate
 pip install .
+```
+
+### Directory Structure
+
+```text
+PySolitaire
+├── MOUSE_CONTROLS_PLAN.md
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── src
+│   ├── config.py
+│   ├── cursor.py
+│   ├── dealing.py
+│   ├── __init__.py
+│   ├── leaderboard.py
+│   ├── __main__.py
+│   ├── model.py
+│   ├── moves.py
+│   ├── overlays.py
+│   ├── renderer.py
+│   ├── rules.py
+│   ├── save_state.py
+│   ├── ui_blessed.py
+│   └── undo.py
+└── tests
+    ├── __init__.py
+    ├── test_config.py
+    ├── test_cursor.py
+    ├── test_dealing.py
+    ├── test_leaderboard.py
+    ├── test_model.py
+    ├── test_moves.py
+    ├── test_overlays.py
+    ├── test_renderer.py
+    ├── test_rules.py
+    ├── test_save_state.py
+    └── test_undo.py
 ```
 
 ---
@@ -162,9 +200,10 @@ Draw-3 rules follow classic Klondike behavior, including stock recycling.
   * Start a new one
 * Save file location:
 
-  ```
+  ```bash
   ~/.config/pysolitaire/save.json
   ```
+
 * Saves include:
 
   * Full game state
@@ -197,7 +236,7 @@ Winning a game automatically clears the save.
   2. Fastest time
 * Stored at:
 
-  ```
+  ```bash
   ~/.config/pysolitaire/leaderboard.json
   ```
 
