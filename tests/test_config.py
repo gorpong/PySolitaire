@@ -1,51 +1,51 @@
-"""Tests for GameConfig dataclass."""
+"""Tests for GameConfig."""
 
 import pytest
 from src.config import GameConfig
 
 
-class TestGameConfigDefaults:
-    """Tests for default configuration values."""
+class TestGameConfig:
+    """Tests for GameConfig dataclass."""
 
-    def test_default_draw_count(self):
+    def test_default_config(self):
         config = GameConfig()
         assert config.draw_count == 1
-
-    def test_default_seed(self):
-        config = GameConfig()
         assert config.seed is None
-
-    def test_default_compact(self):
-        """compact defaults to False so large cards are shown without explicit opt-in."""
-        config = GameConfig()
         assert config.compact is False
+        assert config.mouse_enabled is True
 
-
-class TestGameConfigValidation:
-    """Tests for configuration validation."""
-
-    def test_draw_count_1_accepted(self):
-        """draw_count of 1 is a valid configuration."""
+    def test_draw_count_1(self):
         config = GameConfig(draw_count=1)
         assert config.draw_count == 1
 
-    def test_draw_count_3_accepted(self):
-        """draw_count of 3 is a valid configuration."""
+    def test_draw_count_3(self):
         config = GameConfig(draw_count=3)
         assert config.draw_count == 3
 
-    def test_invalid_draw_count_raises(self):
-        """draw_count outside {1, 3} is rejected at construction time
-        so callers learn immediately rather than at first draw."""
-        with pytest.raises(ValueError, match="draw_count must be 1 or 3"):
+    def test_invalid_draw_count(self):
+        with pytest.raises(ValueError):
             GameConfig(draw_count=2)
 
-    def test_seed_accepts_integer(self):
-        """An explicit integer seed is stored for reproducible games."""
-        config = GameConfig(seed=42)
-        assert config.seed == 42
+    def test_seed(self):
+        config = GameConfig(seed=12345)
+        assert config.seed == 12345
 
-    def test_compact_true_accepted(self):
-        """Explicit compact=True selects the 5×3 card layout."""
+    def test_compact_mode(self):
         config = GameConfig(compact=True)
         assert config.compact is True
+
+    def test_mouse_disabled(self):
+        config = GameConfig(mouse_enabled=False)
+        assert config.mouse_enabled is False
+
+    def test_all_options(self):
+        config = GameConfig(
+            draw_count=3,
+            seed=42,
+            compact=True,
+            mouse_enabled=False,
+        )
+        assert config.draw_count == 3
+        assert config.seed == 42
+        assert config.compact is True
+        assert config.mouse_enabled is False

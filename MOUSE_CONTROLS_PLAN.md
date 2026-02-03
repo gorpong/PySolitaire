@@ -2,97 +2,85 @@
 
 ## Overview
 
-This document outlines the comprehensive plan for adding mouse support to PySolitaire while maintaining backward compatibility with keyboard-only controls.
+This document describes the mouse support implementation for PySolitaire. Mouse controls are fully implemented and working alongside keyboard controls.
 
 ---
 
-## Goals
+## Features Implemented
 
 1. **Click-to-Select, Click-to-Place**: Click on a card to select it, click on a destination to place it
-2. **Double-Click Auto-Move**: Double-click a card to automatically move it to the best valid destination (foundation if possible, otherwise first valid tableau)
-3. **Drag-and-Drop** (Optional): If technically feasible with blessed's mouse support
-4. **Visual Feedback**: Hover effects to show what's clickable
-5. **Backward Compatibility**: Keyboard controls remain fully functional
-6. **Opt-Out Flag**: `--no-mouse` flag to disable mouse support
+2. **Drag-and-Drop**: Drag a card from source to destination in one gesture (mouse down, move, mouse up)
+3. **Right-Click Cancel**: Right-click cancels the current selection
+4. **Backward Compatibility**: Keyboard controls remain fully functional
+5. **Opt-Out Flag**: `--no-mouse` flag to disable mouse support
 
 ---
 
-## Technical Investigation
+## Technical Details
 
 ### Mouse Support in Blessed
 
-The blessed library supports mouse input via:
-- **`term.inkey()`**: Returns mouse events when mouse reporting is enabled
-- **Mouse protocols**: SGR 1006 (modern, works with tmux/screen)
-- **Event types**:
-  - Mouse button press/release
-  - Mouse movement with button held (drag)
-  - Mouse position (x, y coordinates)
+Mouse input is enabled via `term.mouse_enabled(clicks=True)` context manager. Blessed reports mouse events as:
 
-### Coordinate Mapping
+- `MOUSE_LEFT`: Left button pressed
+- `MOUSE_LEFT_RELEASED`: Left button released
+- `MOUSE_RIGHT`: Right button pressed
+- `MOUSE_RIGHT_RELEASED`: Right button released
+- `MOUSE_MIDDLE`: Middle button pressed
+- `MOUSE_MIDDLE_RELEASED`: Middle button released
 
-Current board layout:
-- Stock: (2, 2) - card dimensions 5×3
-- Waste: (10, 2)
-- Foundations: (58, 2), (66, 2), (74, 2), (82, 2)
-- Tableau: Starting at y=7, piles at x = 2, 12, 22, 32, 42, 52, 62
-
-Each pile needs a bounding box for hit detection.
+Coordinates are available via `key.mouse_xy` as a tuple of `(x, y)`.
 
 ---
 
-## Implementation Strategy
+## Coordinate Mapping
 
-### Phase 2A: Basic Click Support
+### Board Layout Constants
 
-**Tasks:**
+Layout-independent constants from `renderer.py`:
 
-1. **Enable Mouse Input**
-   - Detect if terminal supports mouse
-   - Enable mouse reporting in blessed context
-   - Add `--no-mouse` flag to disable
+| Constant | Value |
+|----------|-------|
+| BOARD_WIDTH | 100 |
+| BOARD_HEIGHT | 40 |
+| STOCK_X | 2 |
+| STOCK_Y | 2 |
+| WASTE_X | 10 |
+| WASTE_Y | 2 |
+| FOUNDATION_START_X | 58 |
+| FOUNDATION_Y | 2 |
+| TABLEAU_START_X | 2 |
+| TABLEAU_SPACING | 10 |
 
-2. **Create Hit Detection System**
-   - `class ClickableRegion`: Define bounding box and associated pile/zone
-   - `calculate_clickable_regions(state)`: Generate regions based on current board
-   - `find_clicked_region(x, y, regions)`: Return which region was clicked
+### Layout-Dependent Dimensions
 
-3. **Integrate Mouse Events into Game Loop**
-   - Modify `_handle_input()` to process mouse events
-   - Parse mouse event data (button, x, y, action)
-   - Map clicks to game actions
+| Property | LAYOUT_LARGE (default) | LAYOUT_COMPACT |
+|----------|------------------------|----------------|
+| card_width | 7 | 5 |
+| card_height | 5 | 3 |
+| card_overlap_y | 1 | 1 |
+| foundation_spacing | 9 | 7 |
+| tableau_y | 8 | 7 |
 
-4. **Click-to-Select**
-   - Left click on card → select it (same as Enter on that location)
-   - Show visual feedback (existing selection indicator)
-   - Right click or ESC → cancel selection
+### Calculated Positions
 
-5. **Click-to-Place**
-   - Left click on destination when card selected → place card
-   - Invalid destination → show error message, keep selection
+**Foundations:**
+- Large layout: x = 58, 67, 76, 85
+- Compact layout: x = 58, 65, 72, 79
 
-6. **Stock Click**
-   - Left click on stock → draw cards (same as Space)
+**Tableau piles:**
+- x = 2, 12, 22, 32, 42, 52, 62 (both layouts)
+- y = 8 (large) or 7 (compact)
 
-### Phase 2B: Advanced Features
+### Board Centering
 
-**Tasks:**
+The board is centered horizontally. Mouse coordinates must be adjusted:
 
-7. **Double-Click Auto-Move**
-   - Track last click time and position
-   - If same position clicked within 500ms → auto-move
-   - Find best destination: foundation first, then first valid tableau
-
-8. **Hover Effects** (if performance permits)
-   - Track mouse movement events
-   - Highlight hovered card/pile with different color
-   - Update on mouse move (may cause flicker, test first)
-
-9. **Drag-and-Drop** (stretch goal)
-   - Mouse down on card → start drag
-   - Mouse move with button held → show dragged card following cursor
-   - Mouse up → drop at current location
-   - More complex: requires overlay rendering
+```python
+pad_left = max(0, (terminal_width - BOARD_WIDTH) // 2)
+canvas_x = mouse_x - pad_left
+canvas_y = mouse_y
+```
 
 ---
 
@@ -100,222 +88,149 @@ Each pile needs a bounding box for hit detection.
 
 ### ClickableRegion
 
+Defined in `src/mouse.py`:
+
 ```python
 @dataclass
 class ClickableRegion:
-    """Represents a clickable area on the board."""
-    x: int              # Top-left x coordinate
-    y: int              # Top-left y coordinate
+    x: int              # Top-left x coordinate (canvas coords)
+    y: int              # Top-left y coordinate (canvas coords)
     width: int          # Width of region
     height: int         # Height of region
     zone: CursorZone    # Which zone this belongs to
     pile_index: int     # Which pile (0-3 for foundation, 0-6 for tableau)
-    card_index: int     # Which card in pile (for tableau)
+    card_index: int     # Which card in pile (for tableau), 0 for others
 ```
 
 ### MouseEvent
 
+Defined in `src/mouse.py`:
+
 ```python
 @dataclass
 class MouseEvent:
-    """Parsed mouse event from blessed."""
-    button: str         # 'left', 'right', 'middle', 'scroll_up', 'scroll_down'
-    action: str         # 'press', 'release', 'drag'
-    x: int              # Column
-    y: int              # Row
+    button: str  # 'left', 'right', 'middle', 'unknown'
+    action: str  # 'pressed', 'released'
+    x: int       # Column (terminal coords, 0-based)
+    y: int       # Row (terminal coords, 0-based)
+```
+
+### Drag State
+
+In `SolitaireUI`:
+
+```python
+self.drag_start: Optional[Tuple[int, int]] = None
+self.drag_start_region: Optional[ClickableRegion] = None
 ```
 
 ---
 
-## Testing Strategy
+## Implementation
+
+### Click vs Drag Detection
+
+- On `MOUSE_LEFT` (press): Record position and region as drag start
+- On `MOUSE_LEFT_RELEASED` (release): Compare release region to drag start
+  - Same region → treat as click
+  - Different region → treat as drag
+
+### Mouse Event Flow
+
+1. `_handle_input()` detects mouse event via `is_mouse_event(key)`
+2. `parse_mouse_event(key)` extracts button, action, and coordinates
+3. For left button:
+   - Press → `_handle_mouse_down()` records drag start
+   - Release → `_handle_mouse_up()` determines click vs drag
+4. For right button press → `_cancel_selection()`
+
+### Drag Execution
+
+`_handle_drag(source, dest)`:
+1. Set cursor to source region
+2. Call `_try_select()` to select the card(s)
+3. Set cursor to destination region
+4. Call `_try_place()` to place the card(s)
+
+This reuses existing selection/placement logic.
+
+---
+
+## Files
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `src/mouse.py` | Hit detection, region calculation, mouse event parsing |
+| `tests/test_mouse.py` | Unit tests for mouse functionality |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `src/config.py` | Added `mouse_enabled: bool = True` |
+| `src/ui_blessed.py` | Mouse event handling, drag-and-drop support |
+
+---
+
+## Configuration
+
+Mouse is enabled by default. Disable with:
+
+```bash
+pysolitaire --no-mouse
+```
+
+---
+
+## Testing
 
 ### Unit Tests
 
-1. **test_hit_detection.py**
-   - Test `calculate_clickable_regions()` returns correct regions
-   - Test `find_clicked_region()` returns correct region for coordinates
-   - Test edge cases (clicks between cards, out of bounds)
+`tests/test_mouse.py` covers:
+- Coordinate translation
+- Clickable region calculation for both layouts
+- Hit detection with edge cases
+- Mouse event parsing for all button types
+- Drag detection logic
 
-2. **test_mouse_events.py**
-   - Test parsing blessed mouse events into MouseEvent
-   - Test double-click detection logic
-   - Test drag detection (start, move, end)
+### Manual Testing Completed
 
-### Integration Tests
-
-3. **test_mouse_integration.py**
-   - Mock mouse clicks on various board locations
-   - Verify selection state changes correctly
-   - Verify moves are executed on valid click sequences
-   - Verify invalid clicks show appropriate errors
-
-### Manual Testing
-
-4. **Mouse Testing Checklist**
-   - [ ] Click stock draws cards
-   - [ ] Click waste selects top card
-   - [ ] Click foundation selects top card
-   - [ ] Click tableau card selects from that card down
-   - [ ] Click destination with selection places card
-   - [ ] Click same source cancels selection
-   - [ ] Invalid destination shows error
-   - [ ] Double-click auto-moves to foundation
-   - [ ] Double-click auto-moves to tableau if foundation invalid
-   - [ ] Right-click cancels selection
-   - [ ] Hover effects work (if implemented)
-   - [ ] Drag-and-drop works (if implemented)
-   - [ ] --no-mouse flag disables mouse
-   - [ ] Keyboard controls still work with mouse enabled
-
----
-
-## Compatibility Considerations
-
-### Terminal Compatibility
-
-- **Modern terminals**: xterm, iTerm2, Windows Terminal → full mouse support
-- **tmux/screen**: Works with SGR 1006 protocol (already used by blessed)
-- **Old terminals**: May not support mouse, fallback to keyboard only
-- **SSH sessions**: Mouse may not work depending on client/server setup
-
-### Detection Strategy
-
-```python
-def supports_mouse() -> bool:
-    """Check if terminal supports mouse input."""
-    # Check TERM environment variable
-    # Check if blessed can enable mouse reporting
-    # Return True if supported, False otherwise
-```
-
-### Graceful Degradation
-
-If mouse not supported or `--no-mouse` flag used:
-- Game functions exactly as before
-- No mouse event processing
-- No error messages about mouse
+- [x] Click stock draws cards
+- [x] Click empty stock with waste recycles
+- [x] Click waste selects top card
+- [x] Click foundation selects top card
+- [x] Click tableau face-up card selects from that card down
+- [x] Click tableau face-down card shows error
+- [x] Click empty tableau pile with King selected places King
+- [x] Click destination with selection places card
+- [x] Click same source cancels selection
+- [x] Click invalid destination shows error, keeps selection
+- [x] Right-click cancels selection
+- [x] ESC still cancels selection
+- [x] Drag from waste to tableau executes move
+- [x] Drag from waste to foundation executes move
+- [x] Drag from tableau to tableau executes move
+- [x] Drag from tableau to foundation executes move
+- [x] Drag from foundation to tableau executes move
+- [x] Drag to invalid destination shows error
+- [x] Drag and release on same card acts as click
+- [x] Drag starting from face-down card does nothing
+- [x] Drag from stock area draws cards
+- [x] `--no-mouse` flag disables all mouse handling
+- [x] Keyboard controls still work with mouse enabled
+- [x] Works with `--compact` layout
+- [x] Works with default large layout
 
 ---
 
-## Implementation Phases
+## Future Enhancements (Not Implemented)
 
-### Phase 2A: Basic Click (Recommended for MVP)
+These features were considered but not implemented:
 
-**Estimated Effort**: 1-2 days
+1. **Double-Click Auto-Move**: Double-click to auto-move card to best destination
+2. **Hover Effects**: Highlight cards on mouse hover
+3. **Visual Drag Feedback**: Show card following cursor during drag
 
-- Enable mouse input in blessed
-- Implement hit detection
-- Click-to-select and click-to-place
-- Stock click
-- `--no-mouse` flag
-- Basic tests
-
-**Deliverable**: Fully functional click-based mouse controls
-
-### Phase 2B: Advanced Features (Optional Enhancement)
-
-**Estimated Effort**: 1 day
-
-- Double-click auto-move
-- Hover effects (if performance acceptable)
-- Additional tests
-
-**Deliverable**: Enhanced mouse experience with convenience features
-
-### Phase 2C: Drag-and-Drop (Stretch Goal)
-
-**Estimated Effort**: 2-3 days (complex)
-
-- Drag state tracking
-- Overlay rendering for dragged card
-- Drop validation
-- Extensive testing
-
-**Deliverable**: Full drag-and-drop support
-
----
-
-## Risks and Mitigation
-
-### Risk 1: Performance with Mouse Events
-
-**Issue**: Mouse move events could flood the input queue, causing lag
-
-**Mitigation**:
-- Only track mouse move if hover effects enabled
-- Throttle mouse move processing (max 10 updates/second)
-- Make hover effects optional
-
-### Risk 2: Terminal Compatibility
-
-**Issue**: Mouse may not work in all terminals/SSH sessions
-
-**Mitigation**:
-- Detect support before enabling
-- Provide `--no-mouse` flag
-- Document requirements clearly
-- Keyboard controls always available
-
-### Risk 3: Coordinate Mapping Errors
-
-**Issue**: Hit detection may fail if coordinates don't match rendered positions
-
-**Mitigation**:
-- Extensive unit tests for coordinate calculations
-- Visual debugging mode (show clickable regions)
-- Test on multiple terminal sizes
-
-### Risk 4: Blessed Mouse API Limitations
-
-**Issue**: blessed's mouse support may have undocumented limitations
-
-**Mitigation**:
-- Prototype mouse handling early
-- Test on multiple platforms (Linux, macOS, Windows WSL)
-- Have fallback to keyboard-only
-
----
-
-## Success Criteria
-
-Phase 2A is successful when:
-1. Player can complete a full game using only mouse
-2. All keyboard controls still work
-3. `--no-mouse` flag disables mouse without breaking game
-4. No crashes or errors with mouse input
-5. All mouse integration tests pass
-6. Works on Linux, macOS, and WSL
-
----
-
-## Alternative Approach: Minimal Mouse Support
-
-If full mouse support proves too complex or unreliable, consider:
-
-**Minimal Mouse Option**: Only implement stock click
-- Click stock to draw cards
-- Everything else remains keyboard-only
-- Much simpler, lower risk
-- Still provides some mouse convenience
-
-This could be Phase 2A-lite if the full implementation encounters blockers.
-
----
-
-## Next Steps
-
-1. **Review this plan** with stakeholders
-2. **Prototype mouse input** with blessed to verify API capabilities
-3. **Implement Phase 2A** (basic click support)
-4. **Test thoroughly** on multiple terminals and platforms
-5. **Decide on Phase 2B/2C** based on Phase 2A results and user feedback
-
----
-
-## Open Questions for Discussion
-
-1. Should hover effects be enabled by default or opt-in?
-2. Should drag-and-drop be pursued or is click sufficient?
-3. What's the priority: getting basic mouse working quickly vs. full-featured mouse?
-4. Should there be a "mouse tutorial" message on first launch?
-5. Should right-click cancel selection or should it be ESC only?
+These may be added in future updates if desired.

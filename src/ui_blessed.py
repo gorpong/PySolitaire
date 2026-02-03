@@ -2,6 +2,7 @@
 
 import sys
 import time
+from contextlib import nullcontext
 from typing import Optional, List, Set, Tuple, Dict, Any
 from dataclasses import dataclass
 from blessed import Terminal
@@ -44,6 +45,14 @@ from src.overlays import (
     render_leaderboard_overlay_lines,
     render_win_leaderboard_lines,
     render_initials_prompt,
+)
+from src.mouse import (
+    ClickableRegion,
+    calculate_clickable_regions,
+    find_clicked_region,
+    parse_mouse_event,
+    is_mouse_event,
+    translate_mouse_coords,
 )
 
 
@@ -101,6 +110,12 @@ class SolitaireUI:
         self.leaderboard = Leaderboard()
         self.save_manager = SaveStateManager()
         self.show_leaderboard = False
+        # Mouse support
+        self.mouse_enabled = config.mouse_enabled
+        self.pad_left = 0  # Will be calculated in _render()
+        # Drag state tracking
+        self.drag_start: Optional[Tuple[int, int]] = None  # (x, y) terminal coords of mouse down
+        self.drag_start_region: Optional[ClickableRegion] = None  # Region where drag started
 
     def _check_terminal_size(self) -> bool:
         """Check if terminal is large enough. Returns True if OK."""
@@ -178,12 +193,23 @@ class SolitaireUI:
             elif key.lower() == 'n':
                 return False
 
+    def _get_mouse_context(self):
+        """Get the appropriate mouse context manager.
+
+        Returns mouse_enabled context if mouse is enabled, otherwise nullcontext.
+        """
+        if self.mouse_enabled:
+            return self.term.mouse_enabled(clicks=True)
+        return nullcontext()
+
     def run(self) -> None:
         """Main game loop."""
         if not self._check_terminal_size():
             sys.exit(1)
 
-        with self.term.fullscreen(), self.term.cbreak(), self.term.hidden_cursor():
+        with self.term.fullscreen(), self.term.cbreak(), self.term.hidden_cursor(), \
+             self._get_mouse_context():
+
             if self.save_manager.has_save():
                 saved_data = self.save_manager.load_game()
                 if saved_data:
@@ -234,8 +260,8 @@ class SolitaireUI:
             output_lines.append(line)
 
         term_width = self.term.width or BOARD_WIDTH
-        pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
-        padding = ' ' * pad_left
+        self.pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
+        padding = ' ' * self.pad_left
 
         frame = self.term.home + self.term.clear
 
@@ -248,20 +274,20 @@ class SolitaireUI:
         move_text = f"Moves: {self.move_count}"
         timer_text = f"Time: {time_text}"
         status_line = f"{move_text}    {timer_text}"
-        frame += self.term.move_xy(pad_left + 2, status_y - 4) + self.term.bright_white(status_line)
+        frame += self.term.move_xy(self.pad_left + 2, status_y - 4) + self.term.bright_white(status_line)
 
         msg_color = self.term.bright_yellow if "!" in self.message or "Invalid" in self.message else self.term.bright_cyan
         # Overwrite with spaces before writing new text so stale characters do not bleed through
-        frame += self.term.move_xy(pad_left + 2, status_y - 2) + ' ' * (BOARD_WIDTH - 4)
-        frame += self.term.move_xy(pad_left + 2, status_y - 2) + msg_color(self.message[:BOARD_WIDTH - 4])
+        frame += self.term.move_xy(self.pad_left + 2, status_y - 2) + ' ' * (BOARD_WIDTH - 4)
+        frame += self.term.move_xy(self.pad_left + 2, status_y - 2) + msg_color(self.message[:BOARD_WIDTH - 4])
 
-        frame += self.term.move_xy(pad_left + 2, status_y - 1) + ' ' * (BOARD_WIDTH - 4)
+        frame += self.term.move_xy(self.pad_left + 2, status_y - 1) + ' ' * (BOARD_WIDTH - 4)
         if self.selection:
             sel_text = f"Selected: {self._describe_selection()}"
-            frame += self.term.move_xy(pad_left + 2, status_y - 1) + self.term.bright_green(sel_text)
+            frame += self.term.move_xy(self.pad_left + 2, status_y - 1) + self.term.bright_green(sel_text)
 
         if self.show_help:
-            frame += self._render_help_str(pad_left)
+            frame += self._render_help_str(self.pad_left)
 
         print(frame, end='', flush=True)
 
@@ -299,10 +325,27 @@ class SolitaireUI:
         return result
 
     def _handle_input(self) -> None:
-        """Handle keyboard input."""
+        """Handle keyboard and mouse input."""
         key = self.term.inkey(timeout=1)  # Wait up to 1 second for input
 
         if not key:
+            return
+
+        # Check for mouse event first
+        if self.mouse_enabled and is_mouse_event(key):
+            # Skip mouse during overlays
+            if self.show_help or self.show_leaderboard:
+                return
+            mouse_event = parse_mouse_event(key)
+            if mouse_event:
+                if mouse_event.button == 'left':
+                    if mouse_event.action == 'pressed':
+                        self._handle_mouse_down(mouse_event.x, mouse_event.y)
+                    elif mouse_event.action == 'released':
+                        self._handle_mouse_up(mouse_event.x, mouse_event.y)
+                elif mouse_event.button == 'right' and mouse_event.action == 'pressed':
+                    self._cancel_selection()
+                    self.needs_redraw = True
             return
 
         # Highlights are ephemeral; any keypress dismisses them so the player does not see stale markers
@@ -354,6 +397,125 @@ class SolitaireUI:
             self.needs_redraw = True
         elif key.lower() == 'l':
             self._show_leaderboard_ingame()
+
+    def _handle_mouse_down(self, terminal_x: int, terminal_y: int) -> None:
+        """Handle mouse button press - start potential drag."""
+        # Clear highlights on mouse down
+        if self.highlighted:
+            self.highlighted = None
+
+        # Clear non-error messages
+        if "Invalid" not in self.message and "Cannot" not in self.message:
+            self.message = ""
+
+        # Convert terminal coords to canvas coords
+        canvas_x, canvas_y = translate_mouse_coords(terminal_x, terminal_y, self.pad_left)
+
+        # Find what was clicked
+        regions = calculate_clickable_regions(self.state, self.layout)
+        region = find_clicked_region(canvas_x, canvas_y, regions)
+
+        # Record drag start position and region
+        self.drag_start = (terminal_x, terminal_y)
+        self.drag_start_region = region
+
+    def _handle_mouse_up(self, terminal_x: int, terminal_y: int) -> None:
+        """Handle mouse button release - complete click or drag."""
+        if self.drag_start_region is None:
+            # No drag in progress (mouse down was outside all regions)
+            self.drag_start = None
+            return
+
+        # Find release region
+        canvas_x, canvas_y = translate_mouse_coords(terminal_x, terminal_y, self.pad_left)
+        regions = calculate_clickable_regions(self.state, self.layout)
+        release_region = find_clicked_region(canvas_x, canvas_y, regions)
+
+        start_region = self.drag_start_region
+        self.drag_start = None
+        self.drag_start_region = None
+
+        if release_region is None:
+            # Released outside any region - treat as cancelled drag
+            self.needs_redraw = True
+            return
+
+        # Check if same region (click) or different region (drag)
+        same_region = (
+            release_region.zone == start_region.zone and
+            release_region.pile_index == start_region.pile_index and
+            release_region.card_index == start_region.card_index
+        )
+
+        if same_region:
+            # Same region - treat as click
+            self._handle_mouse_click(terminal_x, terminal_y)
+        else:
+            # Different region - treat as drag
+            self._handle_drag(start_region, release_region)
+
+    def _handle_drag(self, source: ClickableRegion, dest: ClickableRegion) -> None:
+        """Execute a drag from source region to destination region."""
+        # Clear any existing selection first
+        self.selection = None
+
+        # Set cursor to source and select
+        self.cursor.zone = source.zone
+        self.cursor.pile_index = source.pile_index
+        self.cursor.card_index = source.card_index
+
+        # Handle stock specially - can't drag from stock, just do stock action
+        if source.zone == CursorZone.STOCK:
+            self._handle_space()
+            self.needs_redraw = True
+            return
+
+        # Try to select the source
+        self._try_select()
+
+        if self.selection is None:
+            # Selection failed (e.g., face-down card, empty pile)
+            self.needs_redraw = True
+            return
+
+        # Move cursor to destination and place
+        self.cursor.zone = dest.zone
+        self.cursor.pile_index = dest.pile_index
+        self.cursor.card_index = dest.card_index
+
+        self._try_place()
+        self.needs_redraw = True
+
+    def _handle_mouse_click(self, terminal_x: int, terminal_y: int) -> None:
+        """Handle a mouse click at terminal coordinates."""
+        # Convert terminal coords to canvas coords
+        canvas_x, canvas_y = translate_mouse_coords(terminal_x, terminal_y, self.pad_left)
+
+        # Find what was clicked
+        regions = calculate_clickable_regions(self.state, self.layout)
+        region = find_clicked_region(canvas_x, canvas_y, regions)
+
+        if region is None:
+            # Clicked empty space - cancel selection if any
+            if self.selection:
+                self._cancel_selection()
+            self.needs_redraw = True
+            return
+
+        # Update cursor to clicked location
+        self.cursor.zone = region.zone
+        self.cursor.pile_index = region.pile_index
+        self.cursor.card_index = region.card_index
+
+        # Handle the click based on zone and current state
+        if region.zone == CursorZone.STOCK:
+            self._handle_space()
+        elif self.selection is None:
+            self._try_select()
+        else:
+            self._try_place()
+
+        self.needs_redraw = True
 
     def _handle_enter(self) -> None:
         """Handle Enter key - select or place."""
@@ -929,18 +1091,24 @@ def main():
     seed = None
     draw_count = 1
     compact = False
+    mouse_enabled = True
 
     args = sys.argv[1:]
-    for i, arg in enumerate(args):
+    i = 0
+    while i < len(args):
+        arg = args[i]
         if arg == "--seed" and i + 1 < len(args):
             try:
                 seed = int(args[i + 1])
+                i += 1
             except ValueError:
                 pass
         elif arg == "--draw3":
             draw_count = 3
         elif arg == "--compact":
             compact = True
+        elif arg == "--no-mouse":
+            mouse_enabled = False
         elif arg in ("--help", "-h"):
             print("PySolitaire - Terminal Klondike Solitaire")
             print()
@@ -950,12 +1118,14 @@ def main():
             print("  --seed NUM   Use specific random seed for reproducible games")
             print("  --draw3      Draw 3 cards from stock (default: draw 1)")
             print("  --compact    Use smaller 5×3 cards (default: 7×5)")
+            print("  --no-mouse   Disable mouse input support")
             print("  --help, -h   Show this help message")
             print()
             print(f"Requires terminal size of at least {MIN_TERM_WIDTH}x{MIN_TERM_HEIGHT}")
             sys.exit(0)
+        i += 1
 
-    config = GameConfig(seed=seed, draw_count=draw_count, compact=compact)
+    config = GameConfig(seed=seed, draw_count=draw_count, compact=compact, mouse_enabled=mouse_enabled)
     ui = SolitaireUI(config)
     ui.run()
 
