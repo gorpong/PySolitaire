@@ -65,7 +65,6 @@ pip install .
 
 ```text
 PySolitaire
-├── MOUSE_CONTROLS_PLAN.md
 ├── pyproject.toml
 ├── README.md
 ├── requirements.txt
@@ -77,6 +76,7 @@ PySolitaire
 │   ├── leaderboard.py
 │   ├── __main__.py
 │   ├── model.py
+│   ├── mouse.py
 │   ├── moves.py
 │   ├── overlays.py
 │   ├── renderer.py
@@ -91,6 +91,7 @@ PySolitaire
     ├── test_dealing.py
     ├── test_leaderboard.py
     ├── test_model.py
+    ├── test_mouse.py
     ├── test_moves.py
     ├── test_overlays.py
     ├── test_renderer.py
