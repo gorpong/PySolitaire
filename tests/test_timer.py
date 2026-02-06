@@ -1,8 +1,10 @@
 """Tests for game timer functionality."""
 
-import pytest
 import time
-from src.timer import GameTimer
+
+import pytest
+
+from pysolitaire.timer import GameTimer
 
 
 class TestGameTimerInitialization:

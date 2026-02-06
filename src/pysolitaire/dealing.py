@@ -3,7 +3,7 @@
 import random
 from typing import List, Optional
 
-from src.model import Card, Suit, Rank, GameState
+from pysolitaire.model import Card, GameState, Rank, Suit
 
 
 def create_deck() -> List[Card]:

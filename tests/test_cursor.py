@@ -1,8 +1,7 @@
 """Tests for cursor navigation model."""
 
-import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.cursor import CursorZone, Cursor
+from pysolitaire.cursor import Cursor, CursorZone
+from pysolitaire.model import Card, GameState, Rank, Suit
 
 
 class TestCursorZone:

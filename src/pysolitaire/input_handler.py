@@ -7,7 +7,7 @@ without knowing about terminal-specific details.
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Optional, Any
+from typing import Any, Optional
 
 
 class InputAction(Enum):

@@ -1,8 +1,9 @@
 """Tests for selection and highlight data types."""
 
 import pytest
-from src.cursor import CursorZone
-from src.selection import Selection, HighlightedDestinations
+
+from pysolitaire.cursor import CursorZone
+from pysolitaire.selection import HighlightedDestinations, Selection
 
 
 class TestSelectionCreation:

@@ -1,9 +1,9 @@
 """Tests for undo functionality."""
 
-import pytest
 from copy import deepcopy
-from src.model import Card, Suit, Rank, GameState
-from src.undo import UndoStack, save_state, restore_state
+
+from pysolitaire.model import Card, GameState, Rank, Suit
+from pysolitaire.undo import UndoStack, restore_state, save_state
 
 
 class TestUndoStack:

@@ -27,16 +27,23 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pytest-cov>=7.0.0",
+    "ruff",
+    "black",
 ]
 
 [project.scripts]
-pysolitaire = "src.ui_blessed:main"
-solitaire = "src.ui_blessed:main"
+pysolitaire = "pysolitaire.ui_blessed:main"
+solitaire = "pysolitaire.ui_blessed:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]
+
+[tool.mutmut]
+runner = "pytest"
+paths_to_mutate = ["src/pysolitaire/"]
+do_not_mutate = ["src/pysolitaire/ui_blessed.py"]

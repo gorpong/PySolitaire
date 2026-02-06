@@ -2,8 +2,7 @@
 
 from typing import List
 
-from src.model import Card, Suit, Rank, GameState
-
+from pysolitaire.model import Card, GameState, Rank, Suit
 
 # Foundation suit order - maps suit to foundation index
 FOUNDATION_SUIT_ORDER = [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES]

@@ -4,36 +4,36 @@ import sys
 import time
 from contextlib import nullcontext
 from typing import Optional, Tuple
+
 from blessed import Terminal
 
-from src.config import GameConfig
-from src.cursor import CursorZone
-from src.game_controller import GameController
-from src.input_handler import InputHandler, InputAction, InputEvent
-from src.dialogs import DialogManager, DialogResult
-from src.renderer import (
-    render_board,
-    LAYOUT_LARGE,
-    LAYOUT_COMPACT,
-    BOARD_WIDTH,
-    BOARD_HEIGHT,
+from pysolitaire.config import GameConfig
+from pysolitaire.cursor import CursorZone
+from pysolitaire.dialogs import DialogManager, DialogResult
+from pysolitaire.game_controller import GameController
+from pysolitaire.input_handler import InputAction, InputEvent, InputHandler
+from pysolitaire.leaderboard import Leaderboard
+from pysolitaire.mouse import (
+    ClickableRegion,
+    calculate_clickable_regions,
+    find_clicked_region,
+    is_mouse_event,
+    parse_mouse_event,
+    translate_mouse_coords,
 )
-from src.leaderboard import Leaderboard
-from src.save_state import SaveStateManager
-from src.overlays import (
+from pysolitaire.overlays import (
     format_time,
     render_help_lines,
     render_initials_prompt,
 )
-from src.mouse import (
-    ClickableRegion,
-    calculate_clickable_regions,
-    find_clicked_region,
-    parse_mouse_event,
-    is_mouse_event,
-    translate_mouse_coords,
+from pysolitaire.renderer import (
+    BOARD_HEIGHT,
+    BOARD_WIDTH,
+    LAYOUT_COMPACT,
+    LAYOUT_LARGE,
+    render_board,
 )
-
+from pysolitaire.save_state import SaveStateManager
 
 MIN_TERM_WIDTH = 100
 MIN_TERM_HEIGHT = 40

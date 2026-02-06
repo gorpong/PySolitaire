@@ -1,7 +1,8 @@
 """Tests for GameConfig."""
 
 import pytest
-from src.config import GameConfig
+
+from pysolitaire.config import GameConfig
 
 
 class TestGameConfig:

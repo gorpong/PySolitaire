@@ -1,7 +1,6 @@
 """Tests for the game model (Card, Suit, Rank, PileType)."""
 
-import pytest
-from src.model import Card, Suit, Rank, PileType
+from pysolitaire.model import Card, PileType, Rank, Suit
 
 
 class TestSuit:

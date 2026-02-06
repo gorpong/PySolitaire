@@ -2,9 +2,10 @@
 
 import tempfile
 from pathlib import Path
+
 import pytest
 
-from src.leaderboard import Leaderboard, LeaderboardEntry
+from pysolitaire.leaderboard import Leaderboard, LeaderboardEntry
 
 
 class TestLeaderboardEntry:

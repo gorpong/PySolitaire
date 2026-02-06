@@ -5,33 +5,33 @@ the game state, cursor, selection, and move validation without
 any UI concerns.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
-from src.model import Card, GameState
-from src.config import GameConfig
-from src.cursor import Cursor, CursorZone
-from src.timer import GameTimer
-from src.selection import Selection, HighlightedDestinations
-from src.dealing import deal_game
-from src.undo import UndoStack, save_state, restore_state
-from src.moves import (
-    move_tableau_to_tableau,
-    move_waste_to_tableau,
-    move_waste_to_foundation,
-    move_tableau_to_foundation,
-    move_foundation_to_tableau,
-    draw_from_stock,
-    recycle_waste_to_stock,
-    bury_top_of_stock,
+from pysolitaire.config import GameConfig
+from pysolitaire.cursor import Cursor, CursorZone
+from pysolitaire.dealing import deal_game
+from pysolitaire.model import Card, GameState
+from pysolitaire.moves import (
     MoveResult,
+    bury_top_of_stock,
+    draw_from_stock,
+    move_foundation_to_tableau,
+    move_tableau_to_foundation,
+    move_tableau_to_tableau,
+    move_waste_to_foundation,
+    move_waste_to_tableau,
+    recycle_waste_to_stock,
 )
-from src.rules import (
+from pysolitaire.rules import (
     can_pick_from_tableau,
     can_pick_from_waste,
-    get_valid_tableau_destinations,
     get_valid_foundation_destinations,
+    get_valid_tableau_destinations,
 )
+from pysolitaire.selection import HighlightedDestinations, Selection
+from pysolitaire.timer import GameTimer
+from pysolitaire.undo import UndoStack, restore_state, save_state
 
 
 @dataclass
@@ -228,7 +228,9 @@ class GameController:
         """Move selected card to foundation."""
         self._save_for_undo()
 
-        if self.session.selection.zone == CursorZone.WASTE:
+        if self.session.selection is None:
+            result = MoveResult(False, "Invalid source")
+        elif self.session.selection.zone == CursorZone.WASTE:
             result = move_waste_to_foundation(self._state, dest_foundation)
         elif self.session.selection.zone == CursorZone.TABLEAU:
             pile = self._state.tableau[self.session.selection.pile_index]
@@ -243,8 +245,6 @@ class GameController:
             self._undo_stack.pop()
             self.session.message = "Cannot move foundation to foundation!"
             return False
-        else:
-            result = MoveResult(False, "Invalid source")
 
         if result.success:
             self._record_successful_move()
@@ -260,7 +260,9 @@ class GameController:
         """Move selected card(s) to tableau."""
         self._save_for_undo()
 
-        if self.session.selection.zone == CursorZone.WASTE:
+        if self.session.selection is None:
+            result = MoveResult(False, "Invalid source")
+        elif self.session.selection.zone == CursorZone.WASTE:
             result = move_waste_to_tableau(self._state, dest_pile)
         elif self.session.selection.zone == CursorZone.TABLEAU:
             result = move_tableau_to_tableau(

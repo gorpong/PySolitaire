@@ -1,15 +1,14 @@
 """Tests for move validation rules."""
 
-import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.rules import (
-    can_place_on_tableau,
-    can_place_on_foundation,
+from pysolitaire.model import Card, GameState, Rank, Suit
+from pysolitaire.rules import (
     can_draw_from_stock,
     can_pick_from_tableau,
     can_pick_from_waste,
-    get_valid_tableau_destinations,
+    can_place_on_foundation,
+    can_place_on_tableau,
     get_valid_foundation_destinations,
+    get_valid_tableau_destinations,
 )
 
 

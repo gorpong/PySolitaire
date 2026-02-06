@@ -2,8 +2,9 @@
 
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
-from src.model import GameState, Card, Suit, Rank
+from typing import Any, Dict, Optional
+
+from pysolitaire.model import Card, GameState, Rank, Suit
 
 
 def _serialize_card(card: Card) -> Dict[str, Any]:

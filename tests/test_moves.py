@@ -1,17 +1,15 @@
 """Tests for move execution and state updates."""
 
-import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.moves import (
-    move_tableau_to_tableau,
-    move_waste_to_tableau,
-    move_waste_to_foundation,
-    move_tableau_to_foundation,
-    move_foundation_to_tableau,
-    draw_from_stock,
-    recycle_waste_to_stock,
+from pysolitaire.model import Card, GameState, Rank, Suit
+from pysolitaire.moves import (
     bury_top_of_stock,
-    MoveResult,
+    draw_from_stock,
+    move_foundation_to_tableau,
+    move_tableau_to_foundation,
+    move_tableau_to_tableau,
+    move_waste_to_foundation,
+    move_waste_to_tableau,
+    recycle_waste_to_stock,
 )
 
 

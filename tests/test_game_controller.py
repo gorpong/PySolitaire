@@ -1,11 +1,12 @@
 """Tests for game controller and session management."""
 
 import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.cursor import Cursor, CursorZone
-from src.config import GameConfig
-from src.selection import Selection, HighlightedDestinations
-from src.game_controller import GameController, GameSession
+
+from pysolitaire.config import GameConfig
+from pysolitaire.cursor import Cursor, CursorZone
+from pysolitaire.game_controller import GameController
+from pysolitaire.model import Card, GameState, Rank, Suit
+from pysolitaire.selection import Selection
 
 
 def make_card(rank: Rank, suit: Suit, face_up: bool = True) -> Card:

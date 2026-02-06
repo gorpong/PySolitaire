@@ -7,10 +7,10 @@ informational displays.
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable, List, Any
+from typing import Any, Callable, List
 
-from src.overlays import render_resume_prompt_lines
-from src.renderer import BOARD_WIDTH
+from pysolitaire.overlays import render_resume_prompt_lines
+from pysolitaire.renderer import BOARD_WIDTH
 
 
 class DialogResult(Enum):

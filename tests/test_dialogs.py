@@ -1,7 +1,6 @@
 """Tests for dialog management and modal interactions."""
 
-import pytest
-from src.dialogs import DialogManager, DialogResult, InitialsResult
+from pysolitaire.dialogs import DialogManager, DialogResult, InitialsResult
 
 
 class FakeKey:

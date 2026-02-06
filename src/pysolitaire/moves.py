@@ -3,14 +3,14 @@
 from dataclasses import dataclass
 from typing import List
 
-from src.model import Card, Suit, GameState
-from src.rules import (
-    can_place_on_tableau,
-    can_place_on_foundation,
+from pysolitaire.model import Card, GameState
+from pysolitaire.rules import (
+    FOUNDATION_SUIT_ORDER,
+    can_draw_from_stock,
     can_pick_from_tableau,
     can_pick_from_waste,
-    can_draw_from_stock,
-    FOUNDATION_SUIT_ORDER,
+    can_place_on_foundation,
+    can_place_on_tableau,
 )
 
 

@@ -3,11 +3,16 @@
 import json
 import tempfile
 from pathlib import Path
+
 import pytest
 
-from src.save_state import SaveStateManager, serialize_game_state, deserialize_game_state
-from src.model import GameState, Card, Suit, Rank
-from src.dealing import deal_game
+from pysolitaire.dealing import deal_game
+from pysolitaire.model import Card, Rank, Suit
+from pysolitaire.save_state import (
+    SaveStateManager,
+    deserialize_game_state,
+    serialize_game_state,
+)
 
 
 class TestSerialization:
@@ -16,7 +21,7 @@ class TestSerialization:
     def test_serialize_card(self):
         """Test serializing a card."""
         card = Card(Rank.ACE, Suit.HEARTS, face_up=True)
-        from src.save_state import _serialize_card
+        from pysolitaire.save_state import _serialize_card
         data = _serialize_card(card)
         assert data['rank'] == 1
         assert data['suit'] == 'hearts'
@@ -25,7 +30,7 @@ class TestSerialization:
     def test_deserialize_card(self):
         """Test deserializing a card."""
         data = {'rank': 1, 'suit': 'hearts', 'face_up': True}
-        from src.save_state import _deserialize_card
+        from pysolitaire.save_state import _deserialize_card
         card = _deserialize_card(data)
         assert card.rank == Rank.ACE
         assert card.suit == Suit.HEARTS

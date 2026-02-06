@@ -1,12 +1,11 @@
 """Tests for UI overlay rendering functions."""
 
-import pytest
 
-from src.overlays import (
-    render_help_lines,
-    render_resume_prompt_lines,
-    render_leaderboard_overlay_lines,
+from pysolitaire.overlays import (
     format_time,
+    render_help_lines,
+    render_leaderboard_overlay_lines,
+    render_resume_prompt_lines,
 )
 
 

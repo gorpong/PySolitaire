@@ -4,7 +4,7 @@ This module contains pure functions for generating overlay text content
 (help screens, dialogs, leaderboards) without terminal-specific rendering.
 """
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
 def format_time(seconds: float) -> str:

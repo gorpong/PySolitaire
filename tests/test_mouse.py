@@ -1,18 +1,16 @@
 """Tests for mouse input handling."""
 
-import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.cursor import CursorZone
-from src.renderer import LAYOUT_LARGE, LAYOUT_COMPACT
-from src.mouse import (
+from pysolitaire.cursor import CursorZone
+from pysolitaire.model import Card, GameState, Rank, Suit
+from pysolitaire.mouse import (
     ClickableRegion,
-    MouseEvent,
-    translate_mouse_coords,
     calculate_clickable_regions,
     find_clicked_region,
-    parse_mouse_event,
     is_mouse_event,
+    parse_mouse_event,
+    translate_mouse_coords,
 )
+from pysolitaire.renderer import LAYOUT_COMPACT, LAYOUT_LARGE
 
 
 class TestTranslateMouseCoords:

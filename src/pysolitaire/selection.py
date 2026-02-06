@@ -7,7 +7,7 @@ valid placement destinations for highlighting.
 from dataclasses import dataclass, field
 from typing import Set
 
-from src.cursor import CursorZone
+from pysolitaire.cursor import CursorZone
 
 
 @dataclass

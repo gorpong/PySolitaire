@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
-from src.model import Card, Suit, Rank, GameState
+
+from pysolitaire.model import Card, GameState, Rank, Suit
 
 
 @dataclass(frozen=True)

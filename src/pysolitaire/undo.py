@@ -1,8 +1,9 @@
 """Undo functionality using command pattern with state snapshots."""
 
 from copy import deepcopy
-from typing import Optional, List
-from src.model import GameState
+from typing import List, Optional
+
+from pysolitaire.model import GameState
 
 
 class UndoStack:

@@ -1,8 +1,7 @@
 """Tests for dealing logic (shuffle, deal, deck creation)."""
 
-import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.dealing import create_deck, shuffle_deck, deal_game
+from pysolitaire.dealing import create_deck, deal_game, shuffle_deck
+from pysolitaire.model import GameState, Rank, Suit
 
 
 class TestCreateDeck:

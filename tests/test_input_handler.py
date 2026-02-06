@@ -1,7 +1,8 @@
 """Tests for input event handling and normalization."""
 
 import pytest
-from src.input_handler import InputAction, InputEvent, InputHandler
+
+from pysolitaire.input_handler import InputAction, InputEvent, InputHandler
 
 
 class FakeKey:

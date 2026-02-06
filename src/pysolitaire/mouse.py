@@ -3,15 +3,15 @@
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from src.cursor import CursorZone
-from src.model import GameState
-from src.renderer import (
+from pysolitaire.cursor import CursorZone
+from pysolitaire.model import GameState
+from pysolitaire.renderer import (
     CardLayout,
-    get_stock_position,
-    get_waste_position,
     get_foundation_position,
-    get_tableau_pile_positions,
+    get_stock_position,
     get_tableau_card_y,
+    get_tableau_pile_positions,
+    get_waste_position,
 )
 
 

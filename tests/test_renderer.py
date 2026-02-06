@@ -1,19 +1,19 @@
 """Tests for ASCII rendering functions."""
 
 import pytest
-from src.model import Card, Suit, Rank, GameState
-from src.renderer import (
-    render_card_top,
-    render_card_lines,
-    render_board,
-    canvas_to_string,
-    LAYOUT_LARGE,
-    LAYOUT_COMPACT,
-    BOARD_WIDTH,
-    BOARD_HEIGHT,
-)
-from src.dealing import deal_game
 
+from pysolitaire.dealing import deal_game
+from pysolitaire.model import Card, GameState, Rank, Suit
+from pysolitaire.renderer import (
+    BOARD_HEIGHT,
+    BOARD_WIDTH,
+    LAYOUT_COMPACT,
+    LAYOUT_LARGE,
+    canvas_to_string,
+    render_board,
+    render_card_lines,
+    render_card_top,
+)
 
 BOTH_LAYOUTS = [
     pytest.param(LAYOUT_LARGE, id="large"),

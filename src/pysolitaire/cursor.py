@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from src.model import GameState
+
+from pysolitaire.model import GameState
 
 
 class CursorZone(Enum):
