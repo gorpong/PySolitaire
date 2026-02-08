@@ -1,10 +1,13 @@
 """Save state functionality for Solitaire."""
 
 import json
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pysolitaire.model import Card, GameState, Rank, Suit
+
+MAX_SAVE_SLOTS = 10
 
 
 def _serialize_card(card: Card) -> Dict[str, Any]:
@@ -57,14 +60,81 @@ def deserialize_game_state(data: Dict[str, Any]) -> GameState:
     )
 
 
+def _is_old_format(data: Dict[str, Any]) -> bool:
+    """Return True if data looks like the pre-slot single-game format.
+
+    The old format has a top-level 'state' key but no 'slots' key.
+    """
+    return 'state' in data and 'slots' not in data
+
+
+def _migrate_old_format(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert old single-game save dict to the new slots format.
+
+    The old game is placed in slot 1.  Missing fields are given safe
+    defaults so that the resume path never triggers a false stall loss.
+    """
+    slot_entry = {
+        'state': data['state'],
+        'move_count': data['move_count'],
+        'elapsed_time': data['elapsed_time'],
+        'draw_count': data['draw_count'],
+        'made_progress_since_last_recycle': data.get(
+            'made_progress_since_last_recycle', True
+        ),
+        'consecutive_burials': data.get('consecutive_burials', 0),
+        'saved_at': datetime.now().isoformat(timespec='seconds'),
+    }
+    return {'slots': {'1': slot_entry}}
+
+
+def _load_raw(path: Path) -> Optional[Dict[str, Any]]:
+    """Read and JSON-parse the save file.  Returns None on any error."""
+    if not path.exists():
+        return None
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _write_raw(path: Path, data: Dict[str, Any]) -> None:
+    """Write data as JSON to path."""
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
 class SaveStateManager:
-    """Manages saving and loading game state."""
+    """Manages saving and loading game state across up to 10 save slots.
+
+    Save file format (new)::
+
+        {
+          "slots": {
+            "1": {
+              "state": { ... },
+              "move_count": 42,
+              "elapsed_time": 183.5,
+              "draw_count": 1,
+              "made_progress_since_last_recycle": true,
+              "consecutive_burials": 0,
+              "saved_at": "2026-02-07T14:23:00"
+            },
+            ...
+          }
+        }
+
+    Old single-game saves (no ``slots`` key) are automatically migrated
+    to slot 1 the first time they are read.
+    """
 
     def __init__(self, save_path: Optional[Path] = None):
         """Initialize save state manager.
 
         Args:
-            save_path: Path to save file. If None, uses default in home dir.
+            save_path: Path to save file.  If None, uses the default
+                location ``~/.config/pysolitaire/save.json``.
         """
         if save_path is None:
             home = Path.home()
@@ -74,8 +144,82 @@ class SaveStateManager:
 
         self.path = save_path
 
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _load_slots(self) -> Dict[int, Any]:
+        """Return the slots dict (keyed by int) from disk, or empty dict.
+
+        Handles migration of old single-game format transparently.
+        After a successful migration the new format is written back so
+        subsequent loads skip the migration step.
+        """
+        raw = _load_raw(self.path)
+        if raw is None:
+            return {}
+
+        if _is_old_format(raw):
+            migrated = _migrate_old_format(raw)
+            _write_raw(self.path, migrated)
+            raw = migrated
+
+        slots_raw = raw.get('slots', {})
+        # JSON keys are always strings; convert to int for internal use
+        return {int(k): v for k, v in slots_raw.items()}
+
+    def _save_slots(self, slots: Dict[int, Any]) -> None:
+        """Persist the slots dict to disk (keys stored as strings)."""
+        _write_raw(self.path, {'slots': {str(k): v for k, v in slots.items()}})
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def has_saves(self) -> bool:
+        """Return True if at least one save slot is occupied."""
+        return bool(self._load_slots())
+
+    def has_save(self) -> bool:
+        """Alias for has_saves() — kept for backwards compatibility."""
+        return self.has_saves()
+
+    def all_slots_full(self) -> bool:
+        """Return True when all MAX_SAVE_SLOTS slots are occupied."""
+        return len(self._load_slots()) >= MAX_SAVE_SLOTS
+
+    def next_free_slot(self) -> Optional[int]:
+        """Return the lowest-numbered free slot (1–10), or None if full."""
+        occupied = set(self._load_slots().keys())
+        for slot in range(1, MAX_SAVE_SLOTS + 1):
+            if slot not in occupied:
+                return slot
+        return None
+
+    def list_saves(self) -> Dict[int, Dict[str, Any]]:
+        """Return a summary dict for all occupied slots.
+
+        Each entry contains: ``move_count``, ``elapsed_time``,
+        ``draw_count``, ``saved_at``.  The full game state is *not*
+        included to keep the summary lightweight.
+
+        Returns:
+            Dict keyed by slot number (int) → summary dict.
+        """
+        slots = self._load_slots()
+        summaries = {}
+        for slot_num, entry in slots.items():
+            summaries[slot_num] = {
+                'move_count': entry['move_count'],
+                'elapsed_time': entry['elapsed_time'],
+                'draw_count': entry['draw_count'],
+                'saved_at': entry.get('saved_at', ''),
+            }
+        return summaries
+
     def save_game(
         self,
+        slot: int,
         state: GameState,
         move_count: int,
         elapsed_time: float,
@@ -83,62 +227,69 @@ class SaveStateManager:
         made_progress_since_last_recycle: bool,
         consecutive_burials: int = 0,
     ) -> None:
-        """Save game state to disk."""
-        data = {
+        """Save a game to the specified slot.
+
+        Args:
+            slot: Slot number (1–10).  Overwrites any existing save in
+                that slot.
+            state: Current game state.
+            move_count: Number of moves made.
+            elapsed_time: Elapsed game time in seconds.
+            draw_count: Draw mode (1 or 3).
+            made_progress_since_last_recycle: Stall-detection flag.
+            consecutive_burials: Draw-3 burial counter.
+        """
+        slots = self._load_slots()
+        slots[slot] = {
             'state': serialize_game_state(state),
             'move_count': move_count,
             'elapsed_time': elapsed_time,
             'draw_count': draw_count,
             'made_progress_since_last_recycle': made_progress_since_last_recycle,
             'consecutive_burials': consecutive_burials,
+            'saved_at': datetime.now().isoformat(timespec='seconds'),
         }
+        self._save_slots(slots)
 
-        with open(self.path, 'w') as f:
-            json.dump(data, f, indent=2)
+    def load_game(self, slot: int) -> Optional[Dict[str, Any]]:
+        """Load a game from the specified slot.
 
-    def load_game(self) -> Optional[Dict[str, Any]]:
-        """Load game state from disk.
+        Returns a dict with keys: ``state``, ``move_count``,
+        ``elapsed_time``, ``draw_count``,
+        ``made_progress_since_last_recycle``, ``consecutive_burials`` —
+        or ``None`` if the slot is empty or the file is corrupted.
 
-        Returns dict with keys: state, move_count, elapsed_time, draw_count,
-        made_progress_since_last_recycle, consecutive_burials — or None if the
-        file does not exist or is structurally corrupted (missing core keys
-        like state/move_count).
+        Missing optional fields are given safe defaults:
 
-        made_progress_since_last_recycle defaults to True when missing so that
-        a resumed game is not falsely treated as stalled; we cannot know whether
-        the player saved at the start of a fresh pass or mid-pass, so the
-        benefit of the doubt avoids an unjust loss on resume.
-
-        consecutive_burials defaults to 0 when missing, granting the player the
-        full two-bury grace period on resume rather than collapsing a stall
-        streak that may never have started.
+        * ``made_progress_since_last_recycle`` → ``True`` (avoids false
+          stall loss on resume when history is unknown).
+        * ``consecutive_burials`` → ``0`` (grants full two-bury grace
+          period on resume).
         """
-        if not self.path.exists():
+        slots = self._load_slots()
+        entry = slots.get(slot)
+        if entry is None:
             return None
 
         try:
-            with open(self.path, 'r') as f:
-                data = json.load(f)
-
             return {
-                'state': deserialize_game_state(data['state']),
-                'move_count': data['move_count'],
-                'elapsed_time': data['elapsed_time'],
-                'draw_count': data['draw_count'],
-                'made_progress_since_last_recycle': data.get(
+                'state': deserialize_game_state(entry['state']),
+                'move_count': entry['move_count'],
+                'elapsed_time': entry['elapsed_time'],
+                'draw_count': entry['draw_count'],
+                'made_progress_since_last_recycle': entry.get(
                     'made_progress_since_last_recycle', True
                 ),
-                'consecutive_burials': data.get('consecutive_burials', 0),
+                'consecutive_burials': entry.get('consecutive_burials', 0),
             }
-        except (json.JSONDecodeError, KeyError, TypeError):
-            # Covers corrupted JSON and saves missing core structural keys
+        except (KeyError, TypeError):
             return None
 
-    def delete_save(self) -> None:
-        """Delete the save file."""
-        if self.path.exists():
-            self.path.unlink()
+    def delete_save(self, slot: int) -> None:
+        """Remove the save in the specified slot.
 
-    def has_save(self) -> bool:
-        """Check if a save file exists."""
-        return self.path.exists()
+        No-op if the slot is empty or the file does not exist.
+        """
+        slots = self._load_slots()
+        slots.pop(slot, None)
+        self._save_slots(slots)

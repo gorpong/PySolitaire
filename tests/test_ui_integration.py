@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from pysolitaire.config import GameConfig
 from pysolitaire.cursor import CursorZone
 from pysolitaire.dialogs import DialogManager
-from pysolitaire.model import Card, Rank, Suit
+from pysolitaire.model import Card, GameState, Rank, Suit
 from pysolitaire.selection import HighlightedDestinations, Selection
 from pysolitaire.ui_blessed import SolitaireUI
 
@@ -555,3 +555,95 @@ class TestUIHintSystem:
 
         assert highlights is None
         assert "no valid" in ui.controller.session.message.lower()
+
+
+class TestUISlotManagement:
+    """Tests for multi-slot save/resume flow."""
+
+    @patch('pysolitaire.ui_blessed.Terminal')
+    def test_ui_has_current_slot_attribute(self, mock_terminal_class):
+        """SolitaireUI tracks which save slot is active."""
+        mock_term = MagicMock()
+        mock_term.width = 120
+        mock_term.height = 50
+        mock_terminal_class.return_value = mock_term
+
+        config = GameConfig()
+        ui = SolitaireUI(config)
+
+        assert hasattr(ui, 'current_slot')
+
+    @patch('pysolitaire.ui_blessed.Terminal')
+    def test_resume_sets_draw_count_from_save(self, mock_terminal_class):
+        """Resuming a Draw-3 save sets config.draw_count to 3."""
+        mock_term = MagicMock()
+        mock_term.width = 120
+        mock_term.height = 50
+        mock_terminal_class.return_value = mock_term
+
+        config = GameConfig(draw_count=1)  # launched without --draw3
+        ui = SolitaireUI(config)
+
+        saved_data = {
+            'state': GameState(),
+            'move_count': 10,
+            'elapsed_time': 60.0,
+            'draw_count': 3,
+            'made_progress_since_last_recycle': True,
+            'consecutive_burials': 0,
+        }
+        ui.controller.load_from_dict(saved_data)
+
+        assert ui.controller.config.draw_count == 3
+
+    @patch('pysolitaire.ui_blessed.Terminal')
+    def test_new_game_assigns_slot(self, mock_terminal_class):
+        """Starting a new game assigns current_slot to the next free slot."""
+        mock_term = MagicMock()
+        mock_term.width = 120
+        mock_term.height = 50
+        mock_terminal_class.return_value = mock_term
+
+        config = GameConfig()
+        ui = SolitaireUI(config)
+
+        # Simulate save manager reporting slot 3 as the next free
+        ui.save_manager.next_free_slot = MagicMock(return_value=3)
+        ui._assign_new_slot()
+
+        assert ui.current_slot == 3
+
+    @patch('pysolitaire.ui_blessed.Terminal')
+    def test_save_on_quit_uses_current_slot(self, mock_terminal_class):
+        """_save_current_game writes to current_slot."""
+        mock_term = MagicMock()
+        mock_term.width = 120
+        mock_term.height = 50
+        mock_terminal_class.return_value = mock_term
+
+        config = GameConfig()
+        ui = SolitaireUI(config)
+        ui.current_slot = 4
+        ui.save_manager.save_game = MagicMock()
+
+        ui._save_current_game()
+
+        call_args = ui.save_manager.save_game.call_args
+        assert call_args[0][0] == 4  # first positional arg is slot
+
+    @patch('pysolitaire.ui_blessed.Terminal')
+    def test_win_clears_current_slot(self, mock_terminal_class):
+        """_clear_current_slot deletes the slot for the finished game."""
+        mock_term = MagicMock()
+        mock_term.width = 120
+        mock_term.height = 50
+        mock_terminal_class.return_value = mock_term
+
+        config = GameConfig()
+        ui = SolitaireUI(config)
+        ui.current_slot = 2
+        ui.save_manager.delete_save = MagicMock()
+
+        ui._clear_current_slot()
+
+        ui.save_manager.delete_save.assert_called_once_with(2)

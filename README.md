@@ -17,7 +17,8 @@ The game is designed to be **playable, deterministic, and test-driven**, while r
 * **Draw-1** mode (default), **Draw-3** supported
 * Auto-flip exposed tableau cards
 * Undo support
-* Save & resume on quit
+* Up to **10 save slots** with resume on startup
+* Draw mode (Draw-1 / Draw-3) preserved across save/resume
 * Timer and move counter
 * Leaderboards (separate for Draw-1 / Draw-3)
 * Optional reproducible games via RNG seed
@@ -37,7 +38,7 @@ The game is designed to be **playable, deterministic, and test-driven**, while r
 
 Dependencies are intentionally minimal:
 
-```python
+```
 blessed>=1.20.0
 pytest>=8.0.0   # for development/testing
 ```
@@ -48,16 +49,17 @@ pytest>=8.0.0   # for development/testing
 
 ### Clone the repository
 
-```bash
+```powershell
 git clone https://github.com/yourname/pysolitaire.git
 cd pysolitaire
 ```
 
 ### Create a virtual environment (recommended)
 
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate  # Linux / macOS
 pip install .
 ```
 
@@ -65,30 +67,43 @@ pip install .
 
 ```text
 PySolitaire
+├── .coveragerc
+├── .gitignore
+├── Makefile
+├── mutmut_config.py
 ├── pyproject.toml
 ├── README.md
 ├── requirements.txt
 ├── src
-│   ├── config.py
-│   ├── cursor.py
-│   ├── dealing.py
-│   ├── __init__.py
-│   ├── leaderboard.py
-│   ├── __main__.py
-│   ├── model.py
-│   ├── mouse.py
-│   ├── moves.py
-│   ├── overlays.py
-│   ├── renderer.py
-│   ├── rules.py
-│   ├── save_state.py
-│   ├── ui_blessed.py
-│   └── undo.py
+│   └── pysolitaire
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── config.py
+│       ├── cursor.py
+│       ├── dealing.py
+│       ├── dialogs.py
+│       ├── game_controller.py
+│       ├── input_handler.py
+│       ├── leaderboard.py
+│       ├── model.py
+│       ├── mouse.py
+│       ├── moves.py
+│       ├── overlays.py
+│       ├── renderer.py
+│       ├── rules.py
+│       ├── save_state.py
+│       ├── selection.py
+│       ├── timer.py
+│       ├── ui_blessed.py
+│       └── undo.py
 └── tests
     ├── __init__.py
     ├── test_config.py
     ├── test_cursor.py
     ├── test_dealing.py
+    ├── test_dialogs.py
+    ├── test_game_controller.py
+    ├── test_input_handler.py
     ├── test_leaderboard.py
     ├── test_model.py
     ├── test_mouse.py
@@ -97,6 +112,9 @@ PySolitaire
     ├── test_renderer.py
     ├── test_rules.py
     ├── test_save_state.py
+    ├── test_selection.py
+    ├── test_timer.py
+    ├── test_ui_integration.py
     └── test_undo.py
 ```
 
@@ -106,15 +124,15 @@ PySolitaire
 
 ### Run directly (development)
 
-```bash
-python -m src
+```powershell
+python -m pysolitaire
 ```
 
 ### After installation (optional)
 
 If installed as a package:
 
-```bash
+```powershell
 pysolitaire
 # or
 solitaire
@@ -184,7 +202,7 @@ The cursor moves between these zones predictably using the arrow keys.
 
 Enable via command-line flag:
 
-```bash
+```powershell
 pysolitaire --draw3
 ```
 
@@ -194,24 +212,31 @@ Draw-3 rules follow classic Klondike behavior, including stock recycling.
 
 ## Saving & Resuming
 
-* The game **auto-saves on quit**
-* On startup, you’ll be prompted to:
+* The game **auto-saves on quit** to one of **10 save slots**
+* On startup, if any saves exist you'll see a slot list showing:
 
-  * Resume the previous game
-  * Start a new one
+  * Slot number
+  * Draw mode (Draw-1 / Draw-3)
+  * Move count
+  * Elapsed time
+  * Date/time last saved
+* Press the slot number (1–9, or 0 for slot 10) to resume, **N** for a new game, or **Esc** to exit
+* The draw mode from the save is always restored, regardless of command-line flags
+* If all 10 slots are full when you quit, you'll be prompted to choose a slot to overwrite
 * Save file location:
 
-  ```bash
+  ```
   ~/.config/pysolitaire/save.json
   ```
 
-* Saves include:
+* Each save includes:
 
   * Full game state
+  * Draw mode
   * Timer
   * Move count
 
-Winning a game automatically clears the save.
+Winning or losing a game automatically clears that save slot.
 
 ---
 
@@ -237,11 +262,11 @@ Winning a game automatically clears the save.
   2. Fastest time
 * Stored at:
 
-  ```bash
+  ```
   ~/.config/pysolitaire/leaderboard.json
   ```
 
-After winning, you’ll be prompted for **3-letter initials** (arcade-style).
+After winning, you'll be prompted for **3-letter initials** (arcade-style).
 
 ---
 
@@ -251,7 +276,7 @@ After winning, you’ll be prompted for **3-letter initials** (arcade-style).
 
 For reproducible deals:
 
-```bash
+```powershell
 pysolitaire --seed 12345
 ```
 
@@ -269,7 +294,26 @@ This is useful for:
 * Game rules are implemented as **pure functions**
 * UI code is isolated from rules and state
 * Deterministic shuffling via seedable RNG
-* Designed for Linux / macOS / WSL terminals
+* Designed for Linux / macOS / WSL terminals (also runs on Windows via PowerShell)
+
+### Running tests
+
+```powershell
+pytest
+```
+
+### Coverage report
+
+```powershell
+pytest --cov --cov-branch --cov-report=html
+```
+
+### Linting / formatting
+
+```powershell
+ruff check src tests
+black src tests
+```
 
 ---
 

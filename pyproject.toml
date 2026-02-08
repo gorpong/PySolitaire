@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pysolitaire"
 version = "1.0.0"
 description = "Terminal-based Klondike Solitaire game"
-readme = "Claude.md"
+readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 keywords = ["solitaire", "klondike", "terminal", "game", "cards"]

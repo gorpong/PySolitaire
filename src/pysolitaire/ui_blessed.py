@@ -78,11 +78,41 @@ class SolitaireUI:
         self.pad_left = 0
         self.drag_start: Optional[Tuple[int, int]] = None
         self.drag_start_region: Optional[ClickableRegion] = None
+        self.current_slot: Optional[int] = None
 
     @property
     def _session(self):
         """Shortcut to controller session."""
         return self.controller.session
+
+    def _assign_new_slot(self) -> None:
+        """Assign the next free save slot to current_slot.
+
+        If all slots are full this sets current_slot to None; the quit
+        handler will prompt for an overwrite slot in that case.
+        """
+        self.current_slot = self.save_manager.next_free_slot()
+
+    def _save_current_game(self) -> None:
+        """Persist the current game to current_slot."""
+        if self.current_slot is None:
+            return
+        data = self.controller.save_to_dict()
+        self.save_manager.save_game(
+            self.current_slot,
+            data['state'],
+            data['move_count'],
+            data['elapsed_time'],
+            data['draw_count'],
+            data['made_progress_since_last_recycle'],
+            data['consecutive_burials'],
+        )
+
+    def _clear_current_slot(self) -> None:
+        """Delete the save slot for the current game."""
+        if self.current_slot is not None:
+            self.save_manager.delete_save(self.current_slot)
+            self.current_slot = None
 
     def _check_terminal_size(self) -> bool:
         """Check if terminal is large enough. Returns True if OK."""
@@ -110,24 +140,33 @@ class SolitaireUI:
         with self.term.fullscreen(), self.term.cbreak(), self.term.hidden_cursor(), \
              self._get_mouse_context():
 
-            if self.save_manager.has_save():
-                saved_data = self.save_manager.load_game()
-                if saved_data:
-                    result = self.dialogs.prompt_resume(
-                        saved_data['move_count'], 
-                        saved_data['elapsed_time']
-                    )
-                    if result == DialogResult.CONFIRMED:
+            if self.save_manager.has_saves():
+                slot = self.dialogs.prompt_slot_select(
+                    self.save_manager.list_saves(), self.pad_left
+                )
+                if slot is None:
+                    # Escape — player wants to quit without playing
+                    return
+                elif slot == -1:
+                    # N — start a new game
+                    self._assign_new_slot()
+                    self._session.message = "New game started!"
+                    self.controller.start_game()
+                else:
+                    # Numeric slot — resume that save
+                    saved_data = self.save_manager.load_game(slot)
+                    if saved_data:
                         self.controller.load_from_dict(saved_data)
-                        self._session.message = "Game resumed!"
-                        self.save_manager.delete_save()
+                        self.current_slot = slot
+                        self._session.message = f"Game resumed from slot {slot}!"
                         self.controller.start_game()
                     else:
-                        self.save_manager.delete_save()
-                        self._session.message = "New game started!"
+                        self._session.message = "Save data corrupted — starting new game."
+                        self._assign_new_slot()
                         self.controller.start_game()
-                    self.needs_redraw = True
+                self.needs_redraw = True
             else:
+                self._assign_new_slot()
                 self.controller.start_game()
 
             while self.running:
@@ -469,7 +508,7 @@ class SolitaireUI:
         self.needs_redraw = True
         self._render()
 
-        self.save_manager.delete_save()
+        self._clear_current_slot()
 
         term_width = self.term.width or BOARD_WIDTH
         pad_left = max(0, (term_width - BOARD_WIDTH) // 2)
@@ -485,6 +524,7 @@ class SolitaireUI:
 
         result = self.dialogs.show_loss_screen()
         if result == DialogResult.CONFIRMED:
+            self._assign_new_slot()
             self.controller.new_game()
             self.controller.start_game()
             self.needs_redraw = True
@@ -500,15 +540,19 @@ class SolitaireUI:
 
         result = self.dialogs.confirm_quit()
         if result == DialogResult.CONFIRMED:
-            data = self.controller.save_to_dict()
-            self.save_manager.save_game(
-                data['state'],
-                data['move_count'],
-                data['elapsed_time'],
-                self.config.draw_count,
-                data['made_progress_since_last_recycle'],
-                data['consecutive_burials'],
-            )
+            # If we don't have a slot yet (all full), prompt for overwrite
+            if self.current_slot is None:
+                overwrite = self.dialogs.prompt_overwrite_slot(
+                    self.save_manager.list_saves(), self.pad_left
+                )
+                if overwrite is None or overwrite == -1:
+                    # Player cancelled overwrite — don't quit
+                    self.controller.resume_timer()
+                    self._session.message = "Quit cancelled."
+                    self.needs_redraw = True
+                    return
+                self.current_slot = overwrite
+            self._save_current_game()
             self.running = False
         else:
             self.controller.resume_timer()
@@ -524,6 +568,8 @@ class SolitaireUI:
 
         result = self.dialogs.confirm_restart()
         if result == DialogResult.CONFIRMED:
+            self._clear_current_slot()
+            self._assign_new_slot()
             self.controller.new_game()
             self.controller.start_game()
         else:
@@ -539,7 +585,7 @@ class SolitaireUI:
         self.controller.pause_timer()
         elapsed = int(self.controller.get_elapsed_time())
 
-        self.save_manager.delete_save()
+        self._clear_current_slot()
 
         self._session.message = f"CONGRATULATIONS! You won in {self._session.move_count} moves and {format_time(elapsed)}!"
         self.needs_redraw = True

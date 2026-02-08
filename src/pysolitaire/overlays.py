@@ -150,6 +150,75 @@ def render_win_leaderboard_lines(
     return lines
 
 
+def render_save_slot_list(slots: Dict[str, Any], mode: str = "resume") -> List[str]:
+    """Generate the save slot selection list.
+
+    Renders a box showing all 10 slots.  Occupied slots show their
+    draw type, move count, elapsed time, and save timestamp.  Empty
+    slots are shown as available.
+
+    Args:
+        slots: Dict keyed by slot number (int) → summary dict with keys
+            ``draw_count``, ``move_count``, ``elapsed_time``, ``saved_at``.
+        mode: ``"resume"`` for the resume-game screen, or ``"overwrite"``
+            when all slots are full and the player must pick one to replace.
+
+    Returns:
+        List of strings forming the slot selection box.
+    """
+    if mode == "overwrite":
+        title = "SELECT SLOT TO OVERWRITE/REPLACE"
+    else:
+        title = "SAVED GAMES"
+
+    width = 58  # interior width between the outer box borders
+    border_top = "\u2554" + "\u2550" * width + "\u2557"
+    border_sep = "\u2560" + "\u2550" * width + "\u2563"
+    border_bot = "\u255a" + "\u2550" * width + "\u255d"
+
+    def box_line(text: str) -> str:
+        return f"\u2551{text:{width}}\u2551"
+
+    lines = [
+        border_top,
+        box_line(f"  {title}"),
+        border_sep,
+    ]
+
+    if not slots and mode != "overwrite":
+        lines.append(box_line("  No saved games found."))
+        lines.append(box_line(""))
+    else:
+        for slot_num in range(1, 11):
+            if slot_num in slots:
+                entry = slots[slot_num]
+                draw_label = f"Draw-{entry['draw_count']}"
+                moves = entry['move_count']
+                time_str = format_time(entry['elapsed_time'])
+                saved_at = entry.get('saved_at', '')
+                # Trim saved_at to date + HH:MM for compact display
+                if 'T' in saved_at:
+                    date_part, time_part = saved_at.split('T', 1)
+                    saved_display = f"{date_part} {time_part[:5]}"
+                else:
+                    saved_display = saved_at[:16]
+                row = (
+                    f"  [{slot_num:2d}]  {draw_label:<6}  "
+                    f"{moves:>4} moves  {time_str}  {saved_display}"
+                )
+            else:
+                row = f"  [{slot_num:2d}]  (empty)"
+            lines.append(box_line(row))
+
+    lines.append(border_sep)
+    if mode == "overwrite":
+        lines.append(box_line("  Press slot number (1-9, 0=10) to overwrite, N to cancel"))
+    else:
+        lines.append(box_line("  Press slot number (1-9, 0=10) to resume, N for new game"))
+    lines.append(border_bot)
+    return lines
+
+
 def render_initials_prompt(current_initials: str) -> str:
     """Generate the initials prompt string.
 

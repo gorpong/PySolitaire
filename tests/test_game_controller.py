@@ -860,6 +860,7 @@ class TestGameControllerSaveRestore:
             'state': saved_state,
             'move_count': 15,
             'elapsed_time': 200.0,
+            'draw_count': 1,
             'made_progress_since_last_recycle': False,
             'consecutive_burials': 2,
         }
@@ -871,3 +872,64 @@ class TestGameControllerSaveRestore:
         assert controller.session.consecutive_burials == 2
         assert len(controller.session.state.waste) == 1
         assert controller.timer.get_elapsed() == pytest.approx(200.0, abs=0.1)
+
+    def test_load_from_dict_restores_draw_count(self):
+        """load_from_dict sets config.draw_count from saved data.
+
+        This ensures that resuming a Draw-3 game started without --draw3
+        on the command line still runs in Draw-3 mode.
+        """
+        config = GameConfig(draw_count=1)  # started as Draw-1
+        controller = GameController(config)
+
+        saved_state = GameState()
+        data = {
+            'state': saved_state,
+            'move_count': 5,
+            'elapsed_time': 60.0,
+            'draw_count': 3,  # was saved as Draw-3
+            'made_progress_since_last_recycle': True,
+            'consecutive_burials': 0,
+        }
+
+        controller.load_from_dict(data)
+
+        assert controller.config.draw_count == 3
+
+    def test_load_from_dict_draw1_overrides_draw3_config(self):
+        """load_from_dict sets Draw-1 even if config says Draw-3."""
+        config = GameConfig(draw_count=3)
+        controller = GameController(config)
+
+        saved_state = GameState()
+        data = {
+            'state': saved_state,
+            'move_count': 2,
+            'elapsed_time': 10.0,
+            'draw_count': 1,
+            'made_progress_since_last_recycle': True,
+            'consecutive_burials': 0,
+        }
+
+        controller.load_from_dict(data)
+
+        assert controller.config.draw_count == 1
+
+    def test_save_to_dict_includes_draw_count(self):
+        """save_to_dict includes draw_count so it round-trips through save/load."""
+        config = GameConfig(draw_count=3)
+        controller = GameController(config)
+
+        data = controller.save_to_dict()
+
+        assert 'draw_count' in data
+        assert data['draw_count'] == 3
+
+    def test_save_to_dict_draw_count_matches_config(self):
+        """save_to_dict draw_count reflects the active config value."""
+        config = GameConfig(draw_count=1)
+        controller = GameController(config)
+
+        data = controller.save_to_dict()
+
+        assert data['draw_count'] == 1

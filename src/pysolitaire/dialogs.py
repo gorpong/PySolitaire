@@ -150,6 +150,77 @@ class DialogManager:
             elif key.lower() == 'q':
                 return DialogResult.CANCELLED
 
+    def prompt_slot_select(
+        self,
+        slots: Any,
+        pad_left: int,
+    ) -> Any:
+        """Display the save slot list and wait for a slot selection.
+
+        Args:
+            slots: Dict keyed by slot number (int) → summary dict, as
+                returned by ``SaveStateManager.list_saves()``.
+            pad_left: Left padding for centering the display.
+
+        Returns:
+            The selected slot number (1–10), or ``None`` if the player
+            cancelled (N or Escape).
+        """
+        from pysolitaire.overlays import render_save_slot_list
+        lines = render_save_slot_list(slots, mode="resume")
+        self._render_overlay(lines, pad_left)
+        return self._read_slot_key()
+
+    def prompt_overwrite_slot(
+        self,
+        slots: Any,
+        pad_left: int,
+    ) -> Any:
+        """Display the slot list in overwrite mode and wait for selection.
+
+        Used when all 10 slots are full and the player must pick one to
+        replace before a new game can be saved.
+
+        Args:
+            slots: Dict keyed by slot number (int) → summary dict.
+            pad_left: Left padding for centering the display.
+
+        Returns:
+            The selected slot number (1–10), or ``None`` if cancelled.
+        """
+        from pysolitaire.overlays import render_save_slot_list
+        lines = render_save_slot_list(slots, mode="overwrite")
+        self._render_overlay(lines, pad_left)
+        return self._read_slot_key()
+
+    def _render_overlay(self, lines: List[str], pad_left: int) -> None:
+        """Render a list of lines centred on screen."""
+        frame = self.term.home + self.term.clear
+        start_x = pad_left + 2
+        start_y = 5
+        for i, line in enumerate(lines):
+            frame += self.term.move_xy(start_x, start_y + i) + self.term.bright_white(line)
+        print(frame, end='', flush=True)
+
+    def _read_slot_key(self) -> Any:
+        """Block until the player presses a valid slot key or cancels.
+
+        Returns:
+            * int 1–10 — slot selection
+            * -1 — player pressed N (new game / cancel overwrite without quitting)
+            * None — player pressed Escape (quit intent)
+        """
+        while True:
+            key = self.term.inkey()
+            key_name = getattr(key, 'name', None)
+            if key_name == 'KEY_ESCAPE':
+                return None
+            char = str(key) if key else ''
+            if char.lower() == 'n':
+                return -1
+            if char.isdigit():
+                return 10 if char == '0' else int(char)
+
     def show_leaderboard(self, lines: List[str], pad_left: int) -> None:
         """Display leaderboard overlay and wait for any key.
         

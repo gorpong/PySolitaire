@@ -474,14 +474,20 @@ class GameController:
             'state': self._state,
             'move_count': self.session.move_count,
             'elapsed_time': self.timer.get_elapsed(),
+            'draw_count': self.config.draw_count,
             'made_progress_since_last_recycle': self.session.made_progress_since_last_recycle,
             'consecutive_burials': self.session.consecutive_burials,
         }
 
     def load_from_dict(self, data: Dict[str, Any]) -> None:
-        """Load game state from a dictionary."""
+        """Load game state from a dictionary.
+
+        Restores draw_count from the saved data so that resuming a
+        Draw-3 game works correctly regardless of command-line flags.
+        """
         self.session.state = data['state']
         self.session.move_count = data['move_count']
+        self.config.draw_count = data['draw_count']
         self.session.made_progress_since_last_recycle = data['made_progress_since_last_recycle']
         self.session.consecutive_burials = data['consecutive_burials']
         self.timer.set_elapsed(data['elapsed_time'])

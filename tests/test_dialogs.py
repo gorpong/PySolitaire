@@ -421,3 +421,82 @@ class TestShowWinScreen:
         )
 
         assert term._key_index == 1
+
+
+class TestPromptSlotSelect:
+    """Tests for save slot selection dialog."""
+
+    def test_prompt_slot_select_returns_slot_number_1_to_9(self):
+        """Pressing 1-9 returns that slot number."""
+        for digit in '123456789':
+            term = FakeTerminal(keys=[digit])
+            manager = DialogManager(term)
+            result = manager.prompt_slot_select(slots={}, pad_left=0)
+            assert result == int(digit)
+
+    def test_prompt_slot_select_0_returns_10(self):
+        """Pressing 0 selects slot 10."""
+        term = FakeTerminal(keys=['0'])
+        manager = DialogManager(term)
+        result = manager.prompt_slot_select(slots={}, pad_left=0)
+        assert result == 10
+
+    def test_prompt_slot_select_n_returns_negative_one(self):
+        """Pressing N means 'new game' and returns -1 (not quit)."""
+        term = FakeTerminal(keys=['n'])
+        manager = DialogManager(term)
+        result = manager.prompt_slot_select(slots={}, pad_left=0)
+        assert result == -1
+
+    def test_prompt_slot_select_uppercase_n_returns_negative_one(self):
+        """Pressing N (uppercase) also means new game."""
+        term = FakeTerminal(keys=['N'])
+        manager = DialogManager(term)
+        result = manager.prompt_slot_select(slots={}, pad_left=0)
+        assert result == -1
+
+    def test_prompt_slot_select_ignores_invalid_keys(self):
+        """Non-digit, non-N keys are ignored until a valid key is pressed."""
+        term = FakeTerminal(keys=['x', 'q', ' ', '3'])
+        manager = DialogManager(term)
+        result = manager.prompt_slot_select(slots={}, pad_left=0)
+        assert result == 3
+
+    def test_prompt_slot_select_escape_returns_none(self):
+        """Escape means quit intent — returns None."""
+        term = FakeTerminal(keys=[('', 'KEY_ESCAPE')])
+        manager = DialogManager(term)
+        result = manager.prompt_slot_select(slots={}, pad_left=0)
+        assert result is None
+
+
+class TestPromptOverwriteSlot:
+    """Tests for overwrite slot selection dialog."""
+
+    def test_prompt_overwrite_returns_slot_number(self):
+        """Pressing a digit returns that slot number."""
+        term = FakeTerminal(keys=['5'])
+        manager = DialogManager(term)
+        result = manager.prompt_overwrite_slot(slots={}, pad_left=0)
+        assert result == 5
+
+    def test_prompt_overwrite_0_returns_10(self):
+        """Pressing 0 selects slot 10 for overwrite."""
+        term = FakeTerminal(keys=['0'])
+        manager = DialogManager(term)
+        result = manager.prompt_overwrite_slot(slots={}, pad_left=0)
+        assert result == 10
+
+    def test_prompt_overwrite_n_returns_negative_one(self):
+        """Pressing N cancels overwrite without quitting — returns -1."""
+        term = FakeTerminal(keys=['n'])
+        manager = DialogManager(term)
+        result = manager.prompt_overwrite_slot(slots={}, pad_left=0)
+        assert result == -1
+
+    def test_prompt_overwrite_ignores_invalid_keys(self):
+        """Non-digit, non-N keys are ignored."""
+        term = FakeTerminal(keys=['a', 'b', '7'])
+        manager = DialogManager(term)
+        result = manager.prompt_overwrite_slot(slots={}, pad_left=0)
+        assert result == 7
