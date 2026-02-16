@@ -2,10 +2,13 @@
 
 A terminal-based ASCII Klondike Solitaire game in Python
 
-PySolitaire is a **single-player Klondike Solitaire** game played entirely in your terminal.
-It uses **cursor-based navigation** with **Enter to pick up / drop cards**, aiming to feel natural, responsive, and faithful to classic Solitaire—without becoming a heavy GUI application.
+PySolitaire is a **single-player Klondike Solitaire** game played entirely
+in your terminal.  It uses **cursor-based navigation** with **Enter to
+pick up / drop cards**, aiming to feel natural, responsive, and faithful
+to classic Solitaire—without becoming a heavy GUI application.
 
-The game is designed to be **playable, deterministic, and test-driven**, while remaining simple and fun.
+The game is designed to be **playable, deterministic, and test-driven**,
+while remaining simple and fun.
 
 ---
 
@@ -14,6 +17,7 @@ The game is designed to be **playable, deterministic, and test-driven**, while r
 * Classic **Klondike Solitaire** rules
 * Fully **terminal-based ASCII UI**
 * **Arrow keys + Enter** interaction model
+* **Mouse** controls also supported
 * **Draw-1** mode (default), **Draw-3** supported
 * Auto-flip exposed tableau cards
 * Undo support
@@ -47,14 +51,15 @@ pytest>=8.0.0   # for development/testing
 
 ## Installation
 
-### Clone the repository
+### Clone the repository, install the game locally
 
 ```powershell
-git clone https://github.com/yourname/pysolitaire.git
-cd pysolitaire
+git clone https://github.com/gorpong/PySolitaire
+cd PySolitaire
+python -m pip install .
 ```
 
-### Create a virtual environment (recommended)
+### Create a virtual environment (recommended if editing)
 
 ```powershell
 python -m venv .venv
@@ -72,6 +77,7 @@ PySolitaire
 ├── Makefile
 ├── mutmut_config.py
 ├── pyproject.toml
+├── LICENSE.md
 ├── README.md
 ├── requirements.txt
 ├── src
@@ -176,6 +182,13 @@ PySolitaire uses a **cursor-driven pick/drop model**:
 5. Press **Enter** again on the original source (or **Esc**) to cancel.
 
 If there is **only one legal destination**, the game may automatically move the card for you.
+
+#### Mouse Controls
+
+PySolitaire also allows the use of the mouse for selecting and moving the cards. Click-to-Select
+and then Click-to-Drop works as well as Drag-and-Drop mode. The card won't be animated when
+dragging, but when the mouse is released it will be displayed in its new location or if there was
+an invalid move, the selection will remain and the error message is shown.
 
 ---
 
@@ -328,7 +341,7 @@ Resize your terminal window and try again.
 
 ## License
 
-This project is for **educational and personal use**.
+This project is for **educational and personal use** under the MIT license (see `LICENSE.md`).
 Not affiliated with or endorsed by any commercial Solitaire product.
 
 ---

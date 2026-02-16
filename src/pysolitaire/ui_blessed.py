@@ -119,10 +119,10 @@ class SolitaireUI:
         width = self.term.width or 80
         height = self.term.height or 24
         if width < MIN_TERM_WIDTH or height < MIN_TERM_HEIGHT:
-            print(f"\nError: Terminal too small!")
+            print("\nError: Terminal too small!")
             print(f"  Current size: {width}x{height}")
             print(f"  Required minimum: {MIN_TERM_WIDTH}x{MIN_TERM_HEIGHT}")
-            print(f"\nPlease resize your terminal and try again.")
+            print("\nPlease resize your terminal and try again.")
             return False
         return True
 
